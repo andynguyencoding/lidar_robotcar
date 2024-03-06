@@ -14,7 +14,7 @@ The next step is to visualize the data and clean it. This can be done using the 
 Then go ahead with training the model using Random Forest Regressor from Scikit-Learn. This is done using the Jupyter notebook in the notebooks folder.
 
 ## References
-Murtaza, Youtube How to run robot motors: https://youtu.be/0lXY87NwVIc?si=XjZ9y-pofpmrJ3lj
-Murtaza, Youtube How to run joystick with Raspberry Pi: https://youtu.be/TMBfiS7LNnU?si=BKFeUhWR-5dlGu2r
-Github, The origin Python library used with RP Lidar - Robotica/RPLidar: https://github.com/Roboticia/RPLidar
+Murtaza, Youtube How to run robot motors: https://youtu.be/0lXY87NwVIc?si=XjZ9y-pofpmrJ3lj <br />
+Murtaza, Youtube How to run joystick with Raspberry Pi: https://youtu.be/TMBfiS7LNnU?si=BKFeUhWR-5dlGu2r <br />
+Github, The origin Python library used with RP Lidar - Robotica/RPLidar: https://github.com/Roboticia/RPLidar <br />
 Nikodem Bartik visualizer Python program: https://www.youtube.com/watch?v=PdSDhdciSpE&t=1s
