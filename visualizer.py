@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
 import os
+import shutil
 import threading
 from pginput import InputBox, DataManager
 
@@ -439,12 +440,52 @@ class VisualizerWindow:
             self.status_var.set(old_status if 'old_status' in locals() else "Error analyzing data")
             print(f"Error analyzing data: {e}")
     
+    def has_header(self, data_file):
+        """Detect if the file has a header row"""
+        try:
+            with open(data_file, 'r') as f:
+                first_line = f.readline().strip()
+                if not first_line:
+                    return False
+                
+                # Split the first line
+                data = first_line.split(',')
+                
+                # Check if first line contains mostly non-numeric data (likely headers)
+                numeric_count = 0
+                for item in data:
+                    try:
+                        float(item)
+                        numeric_count += 1
+                    except (ValueError, TypeError):
+                        pass
+                
+                # If less than 80% of values are numeric, likely a header
+                if len(data) > 0 and (numeric_count / len(data)) < 0.8:
+                    return True
+                
+                # Additional check: if first line has typical header words
+                header_keywords = ['lidar', 'angle', 'distance', 'angular', 'velocity', 'x', 'y', 'theta']
+                first_line_lower = first_line.lower()
+                for keyword in header_keywords:
+                    if keyword in first_line_lower:
+                        return True
+                
+                return False
+                
+        except Exception as e:
+            print(f"Error detecting header: {e}")
+            return False
+    
     def analyze_data_file(self, data_file):
         """Analyze data file and return statistics (moved from StartupConfigWindow)"""
         import os
         
         if not os.path.exists(data_file):
             raise FileNotFoundError(f"Data file not found: {data_file}")
+        
+        # Check if file has headers
+        has_headers = self.has_header(data_file)
         
         angular_velocities = []
         total_invalid_count = 0
@@ -457,6 +498,10 @@ class VisualizerWindow:
                 if not line:
                     continue
                 
+                # Skip header line if present
+                if has_headers and line_num == 1:
+                    continue
+                
                 try:
                     data = line.split(',')
                     if len(data) == LIDAR_RESOLUTION + 1:  # 360 lidar + 1 turn value
@@ -467,7 +512,7 @@ class VisualizerWindow:
                         for i in range(LIDAR_RESOLUTION):
                             try:
                                 value = float(data[i])
-                                if math.isinf(value) or math.isnan(value):
+                                if math.isinf(value) or math.isnan(value) or value == 0:
                                     invalid_in_frame += 1
                             except (ValueError, TypeError):
                                 invalid_in_frame += 1
@@ -492,24 +537,24 @@ class VisualizerWindow:
             'total_invalid_count': total_invalid_count,
             'frames_with_invalid': frames_with_invalid,
             'total_frames': total_frames,
-            'file_path': data_file
+            'file_path': data_file,
+            'has_headers': has_headers
         }
     
     def display_data_statistics(self, stats, data_file):
         """Display data statistics in a popup window (moved from StartupConfigWindow)"""
-        import os
         
         # Create popup window
         popup = tk.Toplevel(self.root)
         popup.title(f"Data Statistics - {os.path.basename(data_file)}")
-        popup.geometry("800x600")
+        popup.geometry("800x650")  # Increased height for new buttons
         popup.resizable(True, True)
         
         # Center the popup
         popup.update_idletasks()
         x = (popup.winfo_screenwidth() // 2) - (800 // 2)
-        y = (popup.winfo_screenheight() // 2) - (600 // 2)
-        popup.geometry(f"800x600+{x}+{y}")
+        y = (popup.winfo_screenheight() // 2) - (650 // 2)
+        popup.geometry(f"800x650+{x}+{y}")
         
         # Make popup modal
         popup.transient(self.root)
@@ -519,27 +564,246 @@ class VisualizerWindow:
         main_frame = ttk.Frame(popup)
         main_frame.pack(fill='both', expand=True, padx=10, pady=10)
         
-        # Title
-        title_label = ttk.Label(main_frame, text="Data Analysis Results", 
-                               font=('Arial', 14, 'bold'))
-        title_label.pack(pady=(0, 10))
+        # Store references for updating
+        self.stats_popup = popup
+        self.stats_data_file = data_file
+        self.stats_imputed = False
+        self.original_stats = stats.copy()
         
         # Statistics text
         stats_frame = ttk.LabelFrame(main_frame, text="Data Quality", padding=10)
         stats_frame.pack(fill='x', pady=(0, 10))
         
-        stats_text = f"""Total Frames: {stats['total_frames']}
-Frames with Invalid Data: {stats['frames_with_invalid']} ({stats['frames_with_invalid']/max(stats['total_frames'], 1)*100:.1f}%)
-Total Invalid Data Points: {stats['total_invalid_count']}
-Valid Angular Velocity Values: {len(stats['angular_velocities'])}"""
+        # Store stats frame for updating
+        self.stats_display_frame = stats_frame
         
-        ttk.Label(stats_frame, text=stats_text, font=('Courier', 10)).pack(anchor='w')
+        # Function to update stats display
+        def update_stats_display(current_stats):
+            # Clear existing content
+            for widget in self.stats_display_frame.winfo_children():
+                widget.destroy()
+            
+            stats_text = f"""Total Frames: {current_stats['total_frames']}
+Frames with Invalid Data: {current_stats['frames_with_invalid']} ({current_stats['frames_with_invalid']/max(current_stats['total_frames'], 1)*100:.1f}%)
+Total Invalid Data Points: {current_stats['total_invalid_count']}
+Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
+            
+            if 'imputed_count' in current_stats and current_stats['imputed_count'] > 0:
+                # Show regular stats
+                ttk.Label(self.stats_display_frame, text=stats_text, font=('Courier', 10)).pack(anchor='w')
+                # Show imputed count in green
+                imputed_label = ttk.Label(self.stats_display_frame, 
+                                        text=f"Imputed Data Points: {current_stats['imputed_count']}", 
+                                        font=('Courier', 10), foreground='green')
+                imputed_label.pack(anchor='w')
+            else:
+                ttk.Label(self.stats_display_frame, text=stats_text, font=('Courier', 10)).pack(anchor='w')
+        
+        # Initial stats display
+        update_stats_display(stats)
+        
+        # Button frame for Impute and Save buttons
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill='x', pady=(0, 10))
+        
+        # Impute button
+        def impute_invalid_data():
+            """Impute invalid data points using adjacent values"""
+            try:
+                # Check if file has headers
+                has_headers = self.has_header(data_file)
+                
+                # Read the original file to preserve headers
+                with open(data_file, 'r') as f:
+                    all_lines = f.readlines()
+                
+                header_line = None
+                data_lines = []
+                
+                if has_headers and all_lines:
+                    header_line = all_lines[0].strip()
+                    data_lines = [line.strip() for line in all_lines[1:] if line.strip()]
+                else:
+                    data_lines = [line.strip() for line in all_lines if line.strip()]
+                
+                imputed_count = 0
+                processed_lines = []
+                
+                # Add header if it exists
+                if header_line:
+                    processed_lines.append(header_line.split(','))
+                
+                # Process each data line
+                for line in data_lines:
+                    if not line:
+                        continue
+                    
+                    data = line.split(',')
+                    if len(data) == LIDAR_RESOLUTION + 1:  # 360 lidar + 1 turn value
+                        lidar_values = []
+                        
+                        # Convert to float and identify invalid positions
+                        for i in range(LIDAR_RESOLUTION):
+                            try:
+                                value = float(data[i])
+                                if math.isinf(value) or math.isnan(value) or value == 0:
+                                    lidar_values.append(None)  # Mark as invalid (including 0 values)
+                                else:
+                                    lidar_values.append(value)
+                            except (ValueError, TypeError):
+                                lidar_values.append(None)  # Mark as invalid
+                        
+                        # Impute invalid values
+                        for i in range(LIDAR_RESOLUTION):
+                            if lidar_values[i] is None:  # Invalid value found
+                                # Find left valid value
+                                left_val = None
+                                left_idx = i - 1
+                                while left_idx >= 0 and left_val is None:
+                                    if lidar_values[left_idx] is not None:
+                                        left_val = lidar_values[left_idx]
+                                        break
+                                    left_idx -= 1
+                                
+                                # Find right valid value
+                                right_val = None
+                                right_idx = i + 1
+                                while right_idx < LIDAR_RESOLUTION and right_val is None:
+                                    if lidar_values[right_idx] is not None:
+                                        right_val = lidar_values[right_idx]
+                                        break
+                                    right_idx += 1
+                                
+                                # Impute based on available adjacent values
+                                if left_val is not None and right_val is not None:
+                                    # Average of left and right
+                                    lidar_values[i] = (left_val + right_val) / 2
+                                elif left_val is not None:
+                                    # Use left value
+                                    lidar_values[i] = left_val
+                                elif right_val is not None:
+                                    # Use right value
+                                    lidar_values[i] = right_val
+                                else:
+                                    # No valid adjacent values, use a default reasonable distance
+                                    lidar_values[i] = 500.0  # Default distance in mm
+                                
+                                imputed_count += 1
+                        
+                        # Update the dataframe with imputed values
+                        imputed_line = []
+                        for i in range(LIDAR_RESOLUTION):
+                            imputed_line.append(str(lidar_values[i]))
+                        imputed_line.append(data[360])  # Keep original angular velocity
+                        
+                        # Store the imputed line
+                        processed_lines.append(imputed_line)
+                    else:
+                        # Keep line as is if format doesn't match
+                        processed_lines.append(data)
+                
+                # Store imputed data for saving
+                self.imputed_data = processed_lines
+                self.stats_imputed = True
+                self.imputed_has_headers = has_headers
+                
+                # Re-analyze the imputed data
+                new_stats = self.analyze_imputed_data_from_list(processed_lines, has_headers)
+                new_stats['imputed_count'] = imputed_count
+                
+                # Update statistics display
+                update_stats_display(new_stats)
+                
+                # Enable save button
+                save_button.config(state='normal')
+                
+                # Update histogram if it exists
+                if hasattr(self, 'stats_canvas') and new_stats['angular_velocities']:
+                    self.update_histogram(new_stats)
+                
+                messagebox.showinfo("Success", f"Successfully imputed {imputed_count} invalid data points!\n" +
+                                  (f"File has headers: {'Yes' if has_headers else 'No'}" if has_headers else ""))
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to impute data: {str(e)}")
+                print(f"Error imputing data: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        impute_button = ttk.Button(button_frame, text="Impute Invalid Data", 
+                                  command=impute_invalid_data, width=20)
+        impute_button.pack(side='left', padx=(0, 10))
+        
+        # Save button (initially disabled)
+        def save_imputed_data():
+            """Save the imputed data using DataManager and file browser"""
+            try:
+                if not hasattr(self, 'imputed_data') or not self.stats_imputed:
+                    messagebox.showerror("Error", "No imputed data to save!")
+                    return
+                
+                # Browse for save location
+                save_file = filedialog.asksaveasfilename(
+                    title="Save Imputed Data",
+                    defaultextension=".txt",
+                    filetypes=[
+                        ("Text files", "*.txt"),
+                        ("CSV files", "*.csv"),
+                        ("All files", "*.*")
+                    ],
+                    initialdir=os.path.dirname(data_file),
+                    initialfile=os.path.basename(data_file).replace('.txt', '_imputed.txt')
+                )
+                
+                if not save_file:
+                    return  # User cancelled
+                
+                # Save the data with proper formatting
+                with open(save_file, 'w') as f:
+                    for line_data in self.imputed_data:
+                        # Join the data and write to file
+                        line_str = ','.join(line_data)
+                        f.write(line_str + '\n')
+                
+                messagebox.showinfo("Success", 
+                                  f"Imputed data saved to:\n{os.path.basename(save_file)}\n" +
+                                  (f"Headers preserved: {'Yes' if hasattr(self, 'imputed_has_headers') and self.imputed_has_headers else 'No'}"))
+                
+                # Disable save button after successful save
+                save_button.config(state='disabled')
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to save imputed data: {str(e)}")
+                print(f"Error saving imputed data: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        save_button = ttk.Button(button_frame, text="Save Imputed Data", 
+                                command=save_imputed_data, width=20, state='disabled')
+        save_button.pack(side='left', padx=(0, 10))
         
         # Histogram
         if stats['angular_velocities']:
             hist_frame = ttk.LabelFrame(main_frame, text="Angular Velocity Distribution", padding=10)
             hist_frame.pack(fill='both', expand=True)
             
+            # Store references for updating
+            self.stats_hist_frame = hist_frame
+            
+            # Create initial histogram
+            self.create_histogram(stats)
+        else:
+            ttk.Label(main_frame, text="No valid angular velocity data found!", 
+                     foreground='red', font=('Arial', 12)).pack(pady=20)
+        
+        # Close button
+        close_button = ttk.Button(main_frame, text="Close", 
+                                 command=popup.destroy, width=15)
+        close_button.pack(pady=10)
+    
+    def create_histogram(self, stats):
+        """Create histogram in the stats window"""
+        try:
             # Create matplotlib figure
             fig, ax = plt.subplots(figsize=(10, 6))
             
@@ -561,17 +825,128 @@ Valid Angular Velocity Values: {len(stats['angular_velocities'])}"""
                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
             
             # Embed plot in tkinter
-            canvas = FigureCanvasTkAgg(fig, hist_frame)
-            canvas.draw()
-            canvas.get_tk_widget().pack(fill='both', expand=True)
-        else:
-            ttk.Label(main_frame, text="No valid angular velocity data found!", 
-                     foreground='red', font=('Arial', 12)).pack(pady=20)
-        
-        # Close button
-        close_button = ttk.Button(main_frame, text="Close", 
-                                 command=popup.destroy, width=15)
-        close_button.pack(pady=10)
+            self.stats_canvas = FigureCanvasTkAgg(fig, self.stats_hist_frame)
+            self.stats_canvas.draw()
+            self.stats_canvas.get_tk_widget().pack(fill='both', expand=True)
+            
+        except Exception as e:
+            print(f"Error creating histogram: {e}")
+    
+    def update_histogram(self, stats):
+        """Update histogram with new stats"""
+        try:
+            if hasattr(self, 'stats_canvas') and hasattr(self, 'stats_hist_frame'):
+                # Clear existing canvas
+                self.stats_canvas.get_tk_widget().destroy()
+                
+                # Create new histogram
+                self.create_histogram(stats)
+        except Exception as e:
+            print(f"Error updating histogram: {e}")
+    
+    def analyze_imputed_data(self, imputed_data):
+        """Analyze imputed data and return statistics"""
+        try:
+            angular_velocities = []
+            total_invalid_count = 0
+            frames_with_invalid = 0
+            total_frames = 0
+            
+            for line in imputed_data:
+                line = line.strip()
+                if not line:
+                    continue
+                
+                data = line.split(',')
+                if len(data) == LIDAR_RESOLUTION + 1:  # 360 lidar + 1 turn value
+                    total_frames += 1
+                    
+                    # Check for invalid data in lidar readings (should be minimal after imputation)
+                    invalid_in_frame = 0
+                    for i in range(LIDAR_RESOLUTION):
+                        try:
+                            value = float(data[i])
+                            if math.isinf(value) or math.isnan(value):
+                                invalid_in_frame += 1
+                        except (ValueError, TypeError):
+                            invalid_in_frame += 1
+                    
+                    if invalid_in_frame > 0:
+                        frames_with_invalid += 1
+                        total_invalid_count += invalid_in_frame
+                    
+                    # Extract angular velocity (last column)
+                    try:
+                        ang_vel = float(data[360])
+                        if not (math.isinf(ang_vel) or math.isnan(ang_vel)):
+                            angular_velocities.append(ang_vel)
+                    except (ValueError, TypeError):
+                        pass  # Skip non-numeric angular velocities
+            
+            return {
+                'angular_velocities': angular_velocities,
+                'total_invalid_count': total_invalid_count,
+                'frames_with_invalid': frames_with_invalid,
+                'total_frames': total_frames,
+                'file_path': self.stats_data_file
+            }
+            
+        except Exception as e:
+            print(f"Error analyzing imputed data: {e}")
+            return self.original_stats
+    
+    def analyze_imputed_data_from_list(self, imputed_data_list, has_headers=False):
+        """Analyze imputed data from list format and return statistics"""
+        try:
+            angular_velocities = []
+            total_invalid_count = 0
+            frames_with_invalid = 0
+            total_frames = 0
+            
+            start_index = 1 if has_headers else 0  # Skip header if present
+            
+            for i, data_frame in enumerate(imputed_data_list):
+                # Skip header row
+                if has_headers and i == 0:
+                    continue
+                    
+                if len(data_frame) == LIDAR_RESOLUTION + 1:  # 360 lidar + 1 turn value
+                    total_frames += 1
+                    
+                    # Check for invalid data in lidar readings (should be minimal after imputation)
+                    invalid_in_frame = 0
+                    for j in range(LIDAR_RESOLUTION):
+                        try:
+                            value = float(data_frame[j])
+                            if math.isinf(value) or math.isnan(value):
+                                invalid_in_frame += 1
+                        except (ValueError, TypeError):
+                            invalid_in_frame += 1
+                    
+                    if invalid_in_frame > 0:
+                        frames_with_invalid += 1
+                        total_invalid_count += invalid_in_frame
+                    
+                    # Extract angular velocity (last column)
+                    try:
+                        ang_vel = float(data_frame[360])
+                        if not (math.isinf(ang_vel) or math.isnan(ang_vel)):
+                            angular_velocities.append(ang_vel)
+                    except (ValueError, TypeError):
+                        pass  # Skip non-numeric angular velocities
+            
+            return {
+                'angular_velocities': angular_velocities,
+                'total_invalid_count': total_invalid_count,
+                'frames_with_invalid': frames_with_invalid,
+                'total_frames': total_frames,
+                'file_path': self.stats_data_file,
+                'has_headers': has_headers
+            }
+            
+        except Exception as e:
+            print(f"Error analyzing imputed data from list: {e}")
+            return self.original_stats
     
     def show_scale_factor_dialog(self):
         """Show scale factor configuration dialog"""
