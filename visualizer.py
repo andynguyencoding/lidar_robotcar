@@ -171,6 +171,21 @@ class VisualizerWindow:
         ttk.Button(button_frame, text="Quit", 
                   command=self.quit_visualizer, width=12).pack(side='left', padx=(0, 5))
         
+        # Frame number input row - between first and second button sets
+        frame_input_frame = ttk.Frame(controls_panel)
+        frame_input_frame.pack(fill='x', pady=(5, 0))
+        
+        # Frame label and input field
+        ttk.Label(frame_input_frame, text="Frame:", width=6).pack(side='left', padx=(0, 5))
+        self.frame_var = tk.StringVar()
+        self.frame_entry = ttk.Entry(frame_input_frame, textvariable=self.frame_var, width=10)
+        self.frame_entry.pack(side='left', padx=(0, 10))
+        self.frame_entry.bind('<Return>', self.on_frame_input)
+        
+        # Add total frames info
+        self.total_frames_label = ttk.Label(frame_input_frame, text="", font=('Arial', 9), foreground='gray')
+        self.total_frames_label.pack(side='left', padx=(5, 0))
+        
         # Create second button frame for modified frames navigation - Second row
         self.modified_button_frame = ttk.Frame(controls_panel)
         self.modified_button_frame.pack(fill='x', pady=(5, 0))
@@ -282,6 +297,9 @@ class VisualizerWindow:
         # Initialize the button states after setup
         self.update_button_states()
         
+        # Initialize frame input field with current frame
+        self.frame_var.set(str(self.data_manager.pointer + 1))
+        
         # Bind Enter key to input fields for data update (matching original pygame behavior)
         self.turn_entry.bind('<Return>', self.on_angular_velocity_input)
         self.linear_entry.bind('<Return>', self.on_linear_velocity_input)
@@ -320,9 +338,10 @@ class VisualizerWindow:
     
     def on_key_press(self, event):
         """Handle keyboard events"""
-        # Check if angular velocity text field is focused - if so, ignore navigation keys
-        if self.turn_entry.focus_get() == self.turn_entry:
-            # Angular velocity field is focused, only allow non-navigation keys
+        # Check if any text field is focused - if so, ignore navigation keys
+        if (self.turn_entry.focus_get() == self.turn_entry or 
+            self.frame_entry.focus_get() == self.frame_entry):
+            # Text field is focused, only allow non-navigation keys
             if event.keysym.lower() in ['i', 'a', 'q']:
                 # Allow mode toggles and quit even when text field is focused
                 pass
@@ -506,6 +525,53 @@ class VisualizerWindow:
             
             print(f"Jumped to last modified frame: {self.data_manager.get_modified_position_info()}")
     
+    def on_frame_input(self, event):
+        """Handle frame number input - jump directly to specified frame"""
+        try:
+            frame_input = self.frame_var.get().strip()
+            if not frame_input:
+                return
+                
+            target_frame = int(frame_input) - 1  # Convert to 0-based index
+            max_frame = len(self.data_manager.lines) - 1
+            
+            # Validate frame number
+            if target_frame < 0:
+                target_frame = 0
+                messagebox.showwarning("Invalid Frame", f"Frame number must be >= 1. Jumping to frame 1.")
+            elif target_frame > max_frame:
+                target_frame = max_frame
+                messagebox.showwarning("Invalid Frame", f"Frame number must be <= {max_frame + 1}. Jumping to frame {max_frame + 1}.")
+            
+            # Jump to the target frame
+            self.data_manager._pointer = target_frame
+            # Reset read position to force re-reading of the dataframe
+            self.data_manager._read_pos = target_frame - 1
+            
+            # Update visualization
+            self.render_frame()
+            self.update_inputs()
+            
+            # Update button states
+            if self.inspect_mode:
+                self.update_button_states()
+                
+            # Update frame input to show actual frame number
+            self.frame_var.set(str(target_frame + 1))
+            
+            # Remove focus from text field so keyboard navigation works immediately
+            self.root.focus_set()
+            
+            print(f"Jumped to frame {target_frame + 1}")
+            
+        except ValueError:
+            messagebox.showerror("Invalid Input", "Please enter a valid frame number")
+            self.frame_var.set(str(self.data_manager.pointer + 1))  # Reset to current frame
+        except Exception as e:
+            error_msg = f"Error jumping to frame: {str(e)}"
+            messagebox.showerror("Error", error_msg)
+            print(f"Error in on_frame_input: {e}")
+    
     def toggle_pause(self):
         """Toggle pause state"""
         self.paused = not self.paused
@@ -665,31 +731,42 @@ class VisualizerWindow:
                 print(f"Error loading data file: {e}")
     
     def save_data(self):
-        """Save the current data using DataManager's write functionality"""
+        """Save the current data back to the original input file"""
         try:
-            # Check if we have data manager and it has an output file configured
+            # Check if we have data manager
             if not hasattr(self, 'data_manager') or not self.data_manager:
                 messagebox.showerror("Error", "No data manager available for saving")
                 return
             
-            # In inspect mode, write the current frame before saving
-            if self.inspect_mode and hasattr(self.data_manager, 'write_line'):
-                self.data_manager.write_line()
+            # Check if there are any modifications to save
+            if not self.data_manager.modified_frames:
+                messagebox.showinfo("Info", "No modifications to save")
+                return
             
-            # Save all data (write remaining frames if in continuous mode)
-            if hasattr(self.data_manager, 'write_line') and not self.inspect_mode:
-                self.data_manager.write_line()
+            # Save modifications back to the original input file
+            if hasattr(self.data_manager, 'save_to_original_file'):
+                success = self.data_manager.save_to_original_file()
+                if success:
+                    modified_count = len(self.data_manager.modified_frames)
+                    self.status_var.set(f"Saved {modified_count} modified frames to original file | Mode: {'INSPECT' if self.inspect_mode else 'CONTINUOUS'} | Data: {'AUGMENTED' if self.augmented_mode else 'REAL'}")
+                    messagebox.showinfo("Success", f"Successfully saved {modified_count} modified frames back to the original input file")
+                    print(f"Data saved to original file: {self.data_manager.in_file}")
+                else:
+                    raise Exception("Failed to save to original file")
+            else:
+                # Fallback to legacy save method if new method not available
+                if hasattr(self.data_manager, 'write_line'):
+                    self.data_manager.write_line()
+                out_file = getattr(self.data_manager, 'out_file', 'output file')
+                self.status_var.set(f"Data saved to {os.path.basename(out_file)} | Mode: {'INSPECT' if self.inspect_mode else 'CONTINUOUS'} | Data: {'AUGMENTED' if self.augmented_mode else 'REAL'}")
+                messagebox.showinfo("Success", f"Data saved successfully to {os.path.basename(out_file)}")
+                print(f"Data saved to: {out_file}")
                 
-            # Show success message
-            out_file = getattr(self.data_manager, 'out_file', 'output file')
-            self.status_var.set(f"Data saved to {os.path.basename(out_file)} | Mode: {'INSPECT' if self.inspect_mode else 'CONTINUOUS'} | Data: {'AUGMENTED' if self.augmented_mode else 'REAL'}")
-            messagebox.showinfo("Success", f"Data saved successfully to {os.path.basename(out_file)}")
-            print(f"Data saved to: {out_file}")
-            
         except Exception as e:
             error_msg = f"Failed to save data: {str(e)}"
             messagebox.showerror("Error", error_msg)
             print(f"Error saving data: {e}")
+            print(traceback.format_exc())
     
     def show_data_statistics(self):
         """Show data statistics popup for current data file"""
@@ -1755,7 +1832,7 @@ Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
             pass
     
     def on_angular_velocity_input(self, event):
-        """Handle angular velocity input - matches original pygame InputBox behavior"""
+        """Handle angular velocity input - updates data manager properly"""
         try:
             new_turn = self.turn_var.get()
             print(f"Angular velocity input received: {new_turn}")
@@ -1764,22 +1841,16 @@ Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
             if self.distances and len(self.distances) == LIDAR_RESOLUTION + 1:
                 self.distances[360] = new_turn
                 
-                # Update the data manager's current dataframe and ensure it's marked for saving
-                if hasattr(self.data_manager, 'lines') and self.data_manager.read_pos >= 0:
-                    # Get current line data
-                    current_line_data = self.distances[:]  # Make a copy
+                # Update the data manager's current dataframe
+                if hasattr(self.data_manager, '_lidar_dataframe') and len(self.data_manager._lidar_dataframe) > 360:
+                    self.data_manager._lidar_dataframe[360] = new_turn
                     
-                    # Update the data manager's internal data
-                    if hasattr(self.data_manager, '_lidar_dataframe'):
-                        self.data_manager._lidar_dataframe = current_line_data
+                    # Update the original line data in memory (same as DataManager.update method)
+                    updated_line = ','.join(str(x) for x in self.data_manager._lidar_dataframe)
+                    self.data_manager.lines[self.data_manager._pointer] = updated_line + '\n'
                     
-                    # Mark this frame as modified for saving
-                    line_str = ','.join(str(val) for val in current_line_data)
-                    if self.data_manager.read_pos < len(self.data_manager.lines):
-                        self.data_manager.lines[self.data_manager.read_pos] = line_str
-                    
-                    # Manually trigger modified frames tracking
-                    current_frame = self.data_manager.pointer
+                    # Track this frame as modified
+                    current_frame = self.data_manager._pointer
                     if current_frame not in self.data_manager._modified_frames:
                         self.data_manager._modified_frames.append(current_frame)
                         self.data_manager._modified_frames.sort()  # Keep the list sorted
@@ -1787,10 +1858,9 @@ Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
                         self.data_manager._modified_pointer = self.data_manager._modified_frames.index(current_frame)
                         print(f"Frame {current_frame} added to modified frames list")
                     
-                    print(f"Data manager updated with new turn value: {new_turn} at frame {self.data_manager.read_pos + 1}")
+                    print(f"Data manager updated with new turn value: {new_turn} at frame {self.data_manager._pointer}")
                 
                 # Don't clear the input field - keep the value for user reference
-                # self.turn_var.set('')  # Removed: Keep the entered value
                 print(f"Angular velocity updated to: {new_turn}")
                 
                 # Immediately update the visualization
@@ -1819,6 +1889,15 @@ Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
     def update_inputs(self):
         """Update tkinter input fields with current data"""
         if self.distances and len(self.distances) == LIDAR_RESOLUTION + 1:
+            # Update frame input field with current frame number (if not actively being edited)
+            if not self.frame_entry.focus_get() == self.frame_entry:  # Only update if not focused
+                current_frame = self.data_manager.pointer + 1  # Convert to 1-based indexing
+                self.frame_var.set(str(current_frame))
+            
+            # Update total frames info
+            total_frames = len(self.data_manager.lines)
+            self.total_frames_label.config(text=f"of {total_frames}")
+            
             # Update angular velocity field with current value (if not actively being edited)
             if not self.turn_entry.focus_get() == self.turn_entry:  # Only update if not focused
                 try:

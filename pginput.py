@@ -88,6 +88,7 @@ class InputBox(Observable):
 class DataManager(Observer):
     def __init__(self, in_file, out_file, w_mode=True):
         super().__init__()
+        self.in_file = in_file  # Store the input file path for saving
         self.infile = open(in_file, 'r')
         self.lines = self.infile.readlines()
         self._pointer = 0
@@ -228,6 +229,39 @@ class DataManager(Observer):
         self._modified_frames.clear()
         self._modified_pointer = -1
 
+    def save_to_original_file(self):
+        """Save all modifications back to the original input file"""
+        try:
+            # Close the current input file handle
+            if hasattr(self, 'infile') and self.infile:
+                self.infile.close()
+            
+            # Write all lines back to the original file
+            with open(self.in_file, 'w') as f:
+                f.writelines(self.lines)
+            
+            # Reopen the input file for continued reading
+            self.infile = open(self.in_file, 'r')
+            return True
+        except Exception as e:
+            print(f"Error saving to original file: {e}")
+            # Try to reopen the input file even if save failed
+            try:
+                self.infile = open(self.in_file, 'r')
+            except:
+                pass
+            return False
+
+    def close(self):
+        """Close all file handles"""
+        try:
+            if hasattr(self, 'infile') and self.infile:
+                self.infile.close()
+            if hasattr(self, 'outfile') and self.outfile:
+                self.outfile.close()
+        except:
+            pass
+
     def write_line(self):
         if self.w_mode:
             self.writer.writerow(self._lidar_dataframe)
@@ -235,6 +269,9 @@ class DataManager(Observer):
     def update(self, observable):
         if isinstance(observable, InputBox):
             self._lidar_dataframe[360] = observable.value
+            # Update the original line data in memory
+            updated_line = ','.join(str(x) for x in self._lidar_dataframe)
+            self.lines[self._pointer] = updated_line + '\n'
             # Track this frame as modified
             current_frame = self._pointer
             if current_frame not in self._modified_frames:
