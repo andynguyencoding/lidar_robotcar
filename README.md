@@ -5,8 +5,9 @@ Using Lidar with Machine Learning to build a self-driving car solution. This pro
 
 ## Project Overview
 - **Data Collection**: Manual driving to gather lidar readings and steering commands
-- **Data Visualization**: Interactive visualizer for analyzing and cleaning data
-- **Data Augmentation**: Horizontal mirroring to increase dataset size
+- **Data Visualization**: Interactive GUI visualizer for analyzing and cleaning data
+- **Data Processing**: Advanced imputation and augmentation tools with GUI interface
+- **Data Augmentation**: Horizontal mirroring and append/replace options to enhance datasets
 - **Machine Learning**: Random Forest Regressor for steering prediction
 - **Autonomous Mode**: Real-time lidar-based navigation
 
@@ -18,11 +19,11 @@ The documentation is in docs folder. All the electronics parts are listed here.
 ### 1. Data Collection
 After assembling the car, put it into data collection mode and drive it manually to gather training data. Press button "A" on your joystick (button may vary by model) to stop data collection. The collected data will be saved as CSV files with lidar readings and corresponding steering commands.
 
-### 2. Data Visualization and Cleaning
+### 2. Data Visualization and Processing
 
-## Using the Visualizer
+## Using the Advanced GUI Visualizer
 
-The visualizer.py program provides an interactive way to view and analyze lidar data with multiple configuration options.
+The visualizer.py program provides a comprehensive interactive GUI for viewing, analyzing, and processing lidar data with extensive configuration and processing options.
 
 ### Starting the Visualizer
 
@@ -49,20 +50,60 @@ This opens the configuration window with the specified file pre-selected and dat
 - **Browse for file**: Click "Browse..." to select any CSV or TXT file from your system
 
 #### Visualization Modes
-- **Inspection Mode**: Frame-by-frame viewing - pauses at each data point for detailed analysis
-- **Show Augmented Data**: Displays horizontally mirrored lidar data (useful for data augmentation)
+- **Continuous Mode**: Real-time playback with play/pause controls
+- **Inspection Mode**: Frame-by-frame viewing with navigation controls for detailed analysis
+- **Show Augmented Data**: Toggle between real and mirrored lidar data display
 
 #### Data Processing
 - **Concatenate augmented data**: Automatically appends mirrored data to your input file, doubling the dataset size
 
-### Interactive Controls (During Visualization)
+### Advanced GUI Features
 
-Once the visualizer is running, use these keyboard shortcuts:
+#### Main Visualizer Window
+- **Dynamic Mode Switching**: Switch between Continuous and Inspection modes during runtime
+- **Navigation Controls**: In inspection mode, use First/Prev/Next/Last buttons for precise frame control
+- **Real-time Input**: Modify angular velocity values and see changes immediately
+- **Status Display**: Current frame information, mode indicators, and data type display
 
-- **SPACE**: Pause/resume playback
-- **I**: Toggle inspection mode (frame-by-frame vs continuous)
-- **A**: Toggle between real and augmented (mirrored) data display
+#### Data Statistics Window (Ctrl+I)
+Access comprehensive data analysis and processing tools:
+
+**Data Quality Analysis:**
+- Total frames count and validity statistics
+- Invalid data points detection and percentage
+- Angular velocity distribution histogram
+- Real-time statistics updates after processing
+
+**Data Processing Tools:**
+- **Impute Invalid Data**: Automatically fill missing or invalid lidar readings using adjacent value interpolation
+- **Augment Data**: Create mirrored versions of your dataset with two options:
+  - **Append**: Add augmented data to existing data (doubles dataset size)
+  - **Replace**: Replace original data with augmented versions
+- **Sequential Processing**: Apply multiple operations (e.g., impute then augment) that build on each other
+- **Preserve Header Option**: Checkbox to control whether file headers are saved with processed data
+
+**Save Functionality:**
+- **Smart Save**: Save any combination of processed data (imputed, augmented, or both)
+- **Format Preservation**: Maintains original file format and structure
+- **Header Control**: User-controlled header preservation during save operations
+
+### Interactive Controls
+
+#### Keyboard Shortcuts
+- **SPACE**: Play/pause (continuous mode) or advance frame (inspection mode)
+- **I**: Toggle between continuous and inspection modes
+- **A**: Toggle between real and augmented data display
 - **Q**: Quit the visualizer
+- **←/→ Arrow Keys**: Navigate previous/next frame (inspection mode only)
+- **Home/End**: Jump to first/last frame (inspection mode only)
+- **Ctrl+I**: Open data statistics window
+- **Ctrl+S**: Save current data modifications
+- **Ctrl+O**: Browse for new data file
+
+#### Mouse Controls
+- **Button Interface**: Full mouse support for all navigation and processing functions
+- **Input Fields**: Click and type to modify angular velocity values
+- **Menu System**: Access all features through organized menu system
 
 ### Understanding the Display
 
@@ -71,20 +112,50 @@ Once the visualizer is running, use these keyboard shortcuts:
 - **Orange circle**: The car/robot position (center)
 - **Blue line**: Car's forward direction
 - **Green line**: Steering direction based on turn data
-- **Bottom text**: Shows current line number, turn value, and data mode (REAL/AUGMENTED)
+- **Frame Info**: Current frame number, total frames, and data mode (REAL/AUGMENTED)
+- **Input Fields**: Editable angular and linear velocity values with real-time updates
+
+### Data Processing Workflow
+
+1. **Load Data**: Use the GUI to select your data file
+2. **Analyze Quality**: Open Data Statistics (Ctrl+I) to assess data quality
+3. **Clean Data**: Use "Impute Invalid Data" to fill missing values
+4. **Augment Dataset**: Use "Augment Data" to create mirrored versions for better ML training
+5. **Inspect Results**: Use inspection mode to verify processing results frame-by-frame
+6. **Save Processed Data**: Use the save function with header preservation options
 
 ### Data Format
 
-The visualizer expects CSV/TXT files with:
-- 360 columns of lidar distance data (one per degree)
-- 1 additional column for turn/steering value
-- Values can be numeric distances or 'inf' for invalid readings
+The visualizer supports CSV/TXT files with:
+- 360 columns of lidar distance data (one per degree, 0-359)
+- 1 additional column for turn/steering value (column 360)
+- Optional header row (automatically detected and preserved)
+- Values can be numeric distances, 'inf', 'nan', or '0' for invalid readings
+- Angular velocity values can be positive (right turn) or negative (left turn)
 
 ### Troubleshooting
 
+**GUI Issues:**
 - **Configuration window doesn't appear**: The program will fall back to console-based configuration
+- **Buttons not responding**: Ensure you're in the correct mode (continuous vs inspection)
+- **Statistics window not opening**: Try using Ctrl+I or the Data menu option
+
+**Data Issues:**
 - **File not found errors**: Ensure your data file path is correct and accessible
-- **Display issues**: Check that your system supports pygame and has proper display drivers
+- **Invalid data warnings**: Use the "Impute Invalid Data" function to clean your dataset
+- **Header issues**: Use the "Preserve header" checkbox in the statistics window
+
+**Display Issues:**
+- **Visualization not updating**: Check that your system supports pygame and tkinter
+- **Performance issues**: Large datasets may require more processing time for statistics
+
+### Advanced Tips
+
+- **Data Quality**: Always check the statistics window before training ML models
+- **Processing Order**: Apply imputation before augmentation for best results  
+- **Navigation**: Use inspection mode for detailed frame-by-frame analysis
+- **Batch Processing**: Process multiple operations sequentially (impute → augment → save)
+- **Backup**: Always save processed data with descriptive filenames (_imputed, _augmented, etc.)
 
 ### 3. Model Training
 After visualizing and cleaning your data, proceed with training the machine learning model using Random Forest Regressor from Scikit-Learn. This is accomplished using the Jupyter notebooks in the `notebooks/` folder:

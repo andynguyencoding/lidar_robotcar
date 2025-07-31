@@ -10,6 +10,7 @@ import os
 import shutil
 import threading
 import traceback
+import sys
 from pginput import InputBox, DataManager
 
 # constant based on lidar resolution
@@ -720,16 +721,22 @@ Frames with Invalid Data: {current_stats['frames_with_invalid']} ({current_stats
 Total Invalid Data Points: {current_stats['total_invalid_count']}
 Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
             
+            # Show regular stats
+            ttk.Label(self.stats_display_frame, text=stats_text, font=('Courier', 10)).pack(anchor='w')
+            
+            if 'augmented_count' in current_stats and current_stats['augmented_count'] > 0:
+                # Show augmented count in blue
+                augmented_label = ttk.Label(self.stats_display_frame, 
+                                        text=f"Augmented Data Frames: {current_stats['augmented_count']}", 
+                                        font=('Courier', 10), foreground='blue')
+                augmented_label.pack(anchor='w')
+            
             if 'imputed_count' in current_stats and current_stats['imputed_count'] > 0:
-                # Show regular stats
-                ttk.Label(self.stats_display_frame, text=stats_text, font=('Courier', 10)).pack(anchor='w')
                 # Show imputed count in green
                 imputed_label = ttk.Label(self.stats_display_frame, 
                                         text=f"Imputed Data Points: {current_stats['imputed_count']}", 
                                         font=('Courier', 10), foreground='green')
                 imputed_label.pack(anchor='w')
-            else:
-                ttk.Label(self.stats_display_frame, text=stats_text, font=('Courier', 10)).pack(anchor='w')
         
         # Initial stats display
         update_stats_display(stats)
@@ -742,42 +749,61 @@ Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
         def impute_invalid_data():
             """Impute invalid data points using adjacent values"""
             try:
-                # Check if file has headers
-                has_headers = self.has_header(data_file)
-                
-                # Read the original file to preserve headers
-                with open(data_file, 'r') as f:
-                    all_lines = f.readlines()
-                
-                header_line = None
-                data_lines = []
-                
-                if has_headers and all_lines:
-                    header_line = all_lines[0].strip()
-                    data_lines = [line.strip() for line in all_lines[1:] if line.strip()]
+                # Check if we have previously modified data to work on
+                if hasattr(self, 'imputed_data') and self.stats_imputed and self.imputed_data:
+                    # Work on previously modified data
+                    print("Working on previously modified data...")
+                    processed_lines = [line[:] for line in self.imputed_data]  # Deep copy
+                    has_headers = hasattr(self, 'imputed_has_headers') and self.imputed_has_headers
+                    
+                    # Skip header for processing
+                    start_idx = 1 if has_headers else 0
+                    data_lines_from_modified = processed_lines[start_idx:]
                 else:
-                    data_lines = [line.strip() for line in all_lines if line.strip()]
+                    # Work on original file data
+                    print("Working on original file data...")
+                    # Check if file has headers
+                    has_headers = self.has_header(data_file)
+                    
+                    # Read the original file to preserve headers
+                    with open(data_file, 'r') as f:
+                        all_lines = f.readlines()
+                    
+                    header_line = None
+                    data_lines = []
+                    
+                    if has_headers and all_lines:
+                        header_line = all_lines[0].strip()
+                        data_lines = [line.strip() for line in all_lines[1:] if line.strip()]
+                    else:
+                        data_lines = [line.strip() for line in all_lines if line.strip()]
+                    
+                    processed_lines = []
+                    
+                    # Add header if it exists
+                    if header_line:
+                        processed_lines.append(header_line.split(','))
+                    
+                    # Convert string data to list format for consistency
+                    data_lines_from_modified = []
+                    for line in data_lines:
+                        if line:
+                            data_lines_from_modified.append(line.split(','))
+                    
+                    # Add original data to processed_lines
+                    processed_lines.extend(data_lines_from_modified)
                 
                 imputed_count = 0
-                processed_lines = []
                 
-                # Add header if it exists
-                if header_line:
-                    processed_lines.append(header_line.split(','))
-                
-                # Process each data line
-                for line in data_lines:
-                    if not line:
-                        continue
-                    
-                    data = line.split(',')
+                # Process each data line for imputation
+                for i, data in enumerate(data_lines_from_modified):
                     if len(data) == LIDAR_RESOLUTION + 1:  # 360 lidar + 1 turn value
                         lidar_values = []
                         
                         # Convert to float and identify invalid positions
-                        for i in range(LIDAR_RESOLUTION):
+                        for j in range(LIDAR_RESOLUTION):
                             try:
-                                value = float(data[i])
+                                value = float(data[j])
                                 if math.isinf(value) or math.isnan(value) or value == 0:
                                     lidar_values.append(None)  # Mark as invalid (including 0 values)
                                 else:
@@ -786,11 +812,11 @@ Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
                                 lidar_values.append(None)  # Mark as invalid
                         
                         # Impute invalid values
-                        for i in range(LIDAR_RESOLUTION):
-                            if lidar_values[i] is None:  # Invalid value found
+                        for j in range(LIDAR_RESOLUTION):
+                            if lidar_values[j] is None:  # Invalid value found
                                 # Find left valid value
                                 left_val = None
-                                left_idx = i - 1
+                                left_idx = j - 1
                                 while left_idx >= 0 and left_val is None:
                                     if lidar_values[left_idx] is not None:
                                         left_val = lidar_values[left_idx]
@@ -799,7 +825,7 @@ Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
                                 
                                 # Find right valid value
                                 right_val = None
-                                right_idx = i + 1
+                                right_idx = j + 1
                                 while right_idx < LIDAR_RESOLUTION and right_val is None:
                                     if lidar_values[right_idx] is not None:
                                         right_val = lidar_values[right_idx]
@@ -809,30 +835,28 @@ Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
                                 # Impute based on available adjacent values
                                 if left_val is not None and right_val is not None:
                                     # Average of left and right
-                                    lidar_values[i] = (left_val + right_val) / 2
+                                    lidar_values[j] = (left_val + right_val) / 2
                                 elif left_val is not None:
                                     # Use left value
-                                    lidar_values[i] = left_val
+                                    lidar_values[j] = left_val
                                 elif right_val is not None:
                                     # Use right value
-                                    lidar_values[i] = right_val
+                                    lidar_values[j] = right_val
                                 else:
                                     # No valid adjacent values, use a default reasonable distance
-                                    lidar_values[i] = 500.0  # Default distance in mm
+                                    lidar_values[j] = 500.0  # Default distance in mm
                                 
                                 imputed_count += 1
                         
                         # Update the dataframe with imputed values
                         imputed_line = []
-                        for i in range(LIDAR_RESOLUTION):
-                            imputed_line.append(str(lidar_values[i]))
+                        for j in range(LIDAR_RESOLUTION):
+                            imputed_line.append(str(lidar_values[j]))
                         imputed_line.append(data[360])  # Keep original angular velocity
                         
-                        # Store the imputed line
-                        processed_lines.append(imputed_line)
-                    else:
-                        # Keep line as is if format doesn't match
-                        processed_lines.append(data)
+                        # Update the processed data
+                        start_idx = 1 if has_headers else 0
+                        processed_lines[start_idx + i] = imputed_line
                 
                 # Store imputed data for saving
                 self.imputed_data = processed_lines
@@ -853,8 +877,12 @@ Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
                 if hasattr(self, 'stats_canvas') and new_stats['angular_velocities']:
                     self.update_histogram(new_stats)
                 
+                # Determine the source of data for success message
+                data_source = "previously modified data" if (hasattr(self, 'imputed_data') and self.stats_imputed and self.imputed_data) else "original file data"
+                
                 messagebox.showinfo("Success", f"Successfully imputed {imputed_count} invalid data points!\n" +
-                                  (f"File has headers: {'Yes' if has_headers else 'No'}" if has_headers else ""))
+                                  f"Worked on: {data_source}\n" +
+                                  (f"File has headers: {'Yes' if has_headers else 'No'}"))
                 
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to impute data: {str(e)}")
@@ -866,17 +894,204 @@ Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
                                   command=impute_invalid_data, width=20)
         impute_button.pack(side='left', padx=(0, 10))
         
-        # Save button (initially disabled)
-        def save_imputed_data():
-            """Save the imputed data using DataManager and file browser"""
+        # Augment Data button
+        def augment_data():
+            """Augment data by reversing lidar points and negating angular velocity"""
+            try:
+                # Prompt user for append or rewrite option
+                choice = messagebox.askyesnocancel(
+                    "Augment Data Options",
+                    "How would you like to handle the augmented data?\n\n" +
+                    "• Yes: Append augmented data to existing data\n" +
+                    "• No: Replace existing data with augmented data only\n" +
+                    "• Cancel: Cancel augmentation"
+                )
+                
+                if choice is None:  # User clicked Cancel
+                    return
+                
+                append_mode = choice  # True for append, False for replace
+                
+                # Check if we have previously modified data to work on
+                if hasattr(self, 'imputed_data') and self.stats_imputed and self.imputed_data:
+                    # Work on previously modified data
+                    print("Augmenting previously modified data...")
+                    source_data = [line[:] for line in self.imputed_data]  # Deep copy
+                    has_headers = hasattr(self, 'imputed_has_headers') and self.imputed_has_headers
+                    
+                    # Extract data lines (skip header)
+                    if has_headers and source_data:
+                        header_line = source_data[0]
+                        data_lines_from_source = source_data[1:]
+                    else:
+                        header_line = None
+                        data_lines_from_source = source_data
+                else:
+                    # Work on original file data
+                    print("Augmenting original file data...")
+                    # Check if file has headers
+                    has_headers = self.has_header(data_file)
+                    
+                    # Read the original file to preserve headers
+                    with open(data_file, 'r') as f:
+                        all_lines = f.readlines()
+                    
+                    header_line = None
+                    data_lines = []
+                    
+                    if has_headers and all_lines:
+                        header_line = all_lines[0].strip().split(',')
+                        data_lines = [line.strip() for line in all_lines[1:] if line.strip()]
+                    else:
+                        data_lines = [line.strip() for line in all_lines if line.strip()]
+                    
+                    # Convert string data to list format for consistency
+                    data_lines_from_source = []
+                    for line in data_lines:
+                        if line:
+                            data_lines_from_source.append(line.split(','))
+                
+                augmented_count = 0
+                processed_lines = []
+                
+                # Add header if it exists
+                if header_line:
+                    processed_lines.append(header_line)
+                
+                # If append mode, add original data first
+                if append_mode:
+                    # Add original/modified data lines first
+                    for data in data_lines_from_source:
+                        processed_lines.append(data)
+                
+                # Process each data line for augmentation
+                for data in data_lines_from_source:
+                    if len(data) == LIDAR_RESOLUTION + 1:  # 360 lidar + 1 turn value
+                        # Reverse the lidar data points (index 0 becomes 359, etc.)
+                        reversed_lidar = []
+                        for i in range(LIDAR_RESOLUTION):
+                            reversed_lidar.append(data[359 - i])  # Reverse the order
+                        
+                        # Negate the angular velocity
+                        try:
+                            angular_velocity = float(data[360])
+                            negated_angular = -angular_velocity
+                        except (ValueError, TypeError):
+                            negated_angular = 0.0  # Default if can't parse
+                        
+                        # Create augmented line
+                        augmented_line = reversed_lidar + [str(negated_angular)]
+                        processed_lines.append(augmented_line)
+                        augmented_count += 1
+                    else:
+                        # In replace mode, keep line as is if format doesn't match
+                        if not append_mode:
+                            processed_lines.append(data)
+                
+                # Store augmented data for saving
+                self.imputed_data = processed_lines
+                self.stats_imputed = True
+                self.imputed_has_headers = has_headers
+                
+                # Re-analyze the augmented data
+                new_stats = self.analyze_imputed_data_from_list(processed_lines, has_headers)
+                new_stats['augmented_count'] = augmented_count
+                if append_mode:
+                    new_stats['original_count'] = len(data_lines_from_source)
+                    new_stats['append_mode'] = True
+                else:
+                    new_stats['append_mode'] = False
+                
+                # Update statistics display
+                def update_stats_display_with_augmented(current_stats):
+                    # Clear existing content
+                    for widget in self.stats_display_frame.winfo_children():
+                        widget.destroy()
+                    
+                    stats_text = f"""Total Frames: {current_stats['total_frames']}
+Frames with Invalid Data: {current_stats['frames_with_invalid']} ({current_stats['frames_with_invalid']/max(current_stats['total_frames'], 1)*100:.1f}%)
+Total Invalid Data Points: {current_stats['total_invalid_count']}
+Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
+                    
+                    # Show regular stats
+                    ttk.Label(self.stats_display_frame, text=stats_text, font=('Courier', 10)).pack(anchor='w')
+                    
+                    # Show mode-specific information
+                    if 'append_mode' in current_stats:
+                        if current_stats['append_mode']:
+                            mode_text = f"Mode: Append (Original: {current_stats.get('original_count', 0)} + Augmented: {current_stats.get('augmented_count', 0)})"
+                        else:
+                            mode_text = f"Mode: Replace (Augmented only: {current_stats.get('augmented_count', 0)} frames)"
+                        
+                        mode_label = ttk.Label(self.stats_display_frame, 
+                                            text=mode_text, 
+                                            font=('Courier', 10), foreground='purple')
+                        mode_label.pack(anchor='w')
+                    
+                    if 'augmented_count' in current_stats and current_stats['augmented_count'] > 0:
+                        # Show augmented count in blue
+                        augmented_label = ttk.Label(self.stats_display_frame, 
+                                                text=f"Augmented Data Frames: {current_stats['augmented_count']}", 
+                                                font=('Courier', 10), foreground='blue')
+                        augmented_label.pack(anchor='w')
+                    
+                    if 'imputed_count' in current_stats and current_stats['imputed_count'] > 0:
+                        # Show imputed count in green
+                        imputed_label = ttk.Label(self.stats_display_frame, 
+                                                text=f"Imputed Data Points: {current_stats['imputed_count']}", 
+                                                font=('Courier', 10), foreground='green')
+                        imputed_label.pack(anchor='w')
+                
+                update_stats_display_with_augmented(new_stats)
+                
+                # Enable save button
+                save_button.config(state='normal')
+                
+                # Update histogram if it exists
+                if hasattr(self, 'stats_canvas') and new_stats['angular_velocities']:
+                    self.update_histogram(new_stats)
+                
+                # Determine the source of data for success message
+                data_source = "previously modified data" if (hasattr(self, 'imputed_data') and self.stats_imputed and self.imputed_data) else "original file data"
+                original_frame_count = len(data_lines_from_source)
+                
+                # Show success message based on mode
+                if append_mode:
+                    success_msg = f"Successfully augmented and appended {augmented_count} data frames!\n" + \
+                                f"Total frames now: {original_frame_count + augmented_count}\n" + \
+                                f"Worked on: {data_source}\n" + \
+                                f"Lidar points reversed and angular velocities negated for augmented data.\n" + \
+                                (f"File has headers: {'Yes' if has_headers else 'No'}")
+                else:
+                    success_msg = f"Successfully replaced data with {augmented_count} augmented frames!\n" + \
+                                f"Data replaced with augmented versions.\n" + \
+                                f"Worked on: {data_source}\n" + \
+                                f"Lidar points reversed and angular velocities negated.\n" + \
+                                (f"File has headers: {'Yes' if has_headers else 'No'}")
+                
+                messagebox.showinfo("Success", success_msg)
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to augment data: {str(e)}")
+                print(f"Error augmenting data: {e}")
+                import traceback
+                traceback.print_exc()
+        
+        augment_button = ttk.Button(button_frame, text="Augment Data", 
+                                   command=augment_data, width=20)
+        augment_button.pack(side='left', padx=(0, 10))
+        
+        # Save button (initially disabled) - updated text and functionality
+        def save_modified_data():
+            """Save the latest modified data (imputed or augmented)"""
             try:
                 if not hasattr(self, 'imputed_data') or not self.stats_imputed:
-                    messagebox.showerror("Error", "No imputed data to save!")
+                    messagebox.showerror("Error", "No modified data to save!")
                     return
                 
                 # Browse for save location
                 save_file = filedialog.asksaveasfilename(
-                    title="Save Imputed Data",
+                    title="Save Modified Data",
                     defaultextension=".txt",
                     filetypes=[
                         ("Text files", "*.txt"),
@@ -884,35 +1099,75 @@ Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
                         ("All files", "*.*")
                     ],
                     initialdir=os.path.dirname(data_file),
-                    initialfile=os.path.basename(data_file).replace('.txt', '_imputed.txt')
+                    initialfile=os.path.basename(data_file).replace('.txt', '_modified.txt')
                 )
                 
                 if not save_file:
                     return  # User cancelled
                 
+                # Get the preserve header setting from the checkbox
+                preserve_headers = self.preserve_header_var.get()
+                
+                # Determine if original data had headers and if we should preserve them
+                original_had_headers = hasattr(self, 'imputed_has_headers') and self.imputed_has_headers
+                
                 # Save the data with proper formatting
                 with open(save_file, 'w') as f:
-                    for line_data in self.imputed_data:
-                        # Join the data and write to file
-                        line_str = ','.join(line_data)
-                        f.write(line_str + '\n')
+                    start_index = 0
+                    
+                    # Handle header preservation logic
+                    if original_had_headers and preserve_headers:
+                        # Skip the first line (header) when writing if we want to preserve it
+                        # The header is already included in self.imputed_data
+                        start_index = 0  # Include header (first line)
+                    elif original_had_headers and not preserve_headers:
+                        # Skip the header line when saving
+                        start_index = 1  # Skip header (first line)
+                    else:
+                        # No original headers, save all data
+                        start_index = 0
+                    
+                    # Write the data starting from the appropriate index
+                    for i, line_data in enumerate(self.imputed_data):
+                        if i >= start_index:
+                            # Join the data and write to file
+                            line_str = ','.join(line_data)
+                            f.write(line_str + '\n')
                 
+                # Prepare success message
+                header_status = "Yes" if (original_had_headers and preserve_headers) else "No"
                 messagebox.showinfo("Success", 
-                                  f"Imputed data saved to:\n{os.path.basename(save_file)}\n" +
-                                  (f"Headers preserved: {'Yes' if hasattr(self, 'imputed_has_headers') and self.imputed_has_headers else 'No'}"))
+                                  f"Modified data saved to:\n{os.path.basename(save_file)}\n" +
+                                  f"Headers preserved: {header_status}")
                 
                 # Disable save button after successful save
                 save_button.config(state='disabled')
                 
             except Exception as e:
-                messagebox.showerror("Error", f"Failed to save imputed data: {str(e)}")
-                print(f"Error saving imputed data: {e}")
+                messagebox.showerror("Error", f"Failed to save modified data: {str(e)}")
+                print(f"Error saving modified data: {e}")
                 import traceback
                 traceback.print_exc()
         
-        save_button = ttk.Button(button_frame, text="Save Imputed Data", 
-                                command=save_imputed_data, width=20, state='disabled')
+        save_button = ttk.Button(button_frame, text="Save", 
+                                command=save_modified_data, width=20, state='disabled')
         save_button.pack(side='left', padx=(0, 10))
+        
+        # Preserve header checkbox
+        preserve_header_frame = ttk.Frame(main_frame)
+        preserve_header_frame.pack(fill='x', pady=(5, 10))
+        
+        self.preserve_header_var = tk.BooleanVar()
+        # Default to True if the original file has headers, False otherwise
+        has_headers = self.has_header(data_file)
+        self.preserve_header_var.set(has_headers)
+        
+        preserve_header_checkbox = ttk.Checkbutton(
+            preserve_header_frame, 
+            text="Preserve header when saving", 
+            variable=self.preserve_header_var
+        )
+        preserve_header_checkbox.pack(anchor='w')
         
         # Histogram
         if stats['angular_velocities']:
@@ -1183,17 +1438,56 @@ Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
     
     def quit_visualizer(self):
         """Quit the visualizer"""
+        print("Quitting visualizer...")
         self.running = False
+        
+        # Clean up data manager
+        try:
+            if hasattr(self, 'data_manager') and self.data_manager:
+                if hasattr(self.data_manager, 'infile') and self.data_manager.infile:
+                    self.data_manager.infile.close()
+                if hasattr(self.data_manager, 'outfile') and self.data_manager.outfile:
+                    self.data_manager.outfile.close()
+        except Exception as e:
+            print(f"Error closing data manager files: {e}")
+        
         self.on_closing()
     
     def on_closing(self):
         """Handle window closing"""
+        print("Closing visualizer...")
         self.running = False
+        
+        # Clean up pygame
         try:
             pygame.quit()
         except:
             pass
-        self.root.destroy()
+        
+        # Close all popup windows first
+        for child in list(self.root.winfo_children()):
+            if isinstance(child, tk.Toplevel):
+                try:
+                    child.destroy()
+                except:
+                    pass
+        
+        try:
+            # Exit the mainloop and destroy the window
+            self.root.quit()     # Exit mainloop - important for program to terminate
+            self.root.destroy()  # Destroy the window
+        except:
+            pass
+        
+        # Force exit if tkinter doesn't properly close
+        print("Visualizer closed.")
+        try:
+            # Give a brief moment for cleanup
+            import time
+            time.sleep(0.1)
+            sys.exit(0)
+        except:
+            pass
     
     def on_angular_velocity_input(self, event):
         """Handle angular velocity input - matches original pygame InputBox behavior"""
