@@ -123,6 +123,31 @@ class DataManager(Observer):
         self._pointer += 1
         return self._lidar_dataframe
 
+    def has_prev(self):
+        return self._pointer > 0
+
+    def prev(self):
+        if self._pointer > 0:
+            self._pointer -= 1
+            # Reset read position to force re-reading of the dataframe
+            self._read_pos = self._pointer - 1
+        return self._lidar_dataframe
+
+    def first(self):
+        """Jump to the first frame"""
+        self._pointer = 0
+        # Reset read position to force re-reading of the dataframe
+        self._read_pos = -1
+        return self._lidar_dataframe
+
+    def last(self):
+        """Jump to the last frame"""
+        if len(self.lines) > 0:
+            self._pointer = len(self.lines) - 1
+            # Reset read position to force re-reading of the dataframe
+            self._read_pos = self._pointer - 1
+        return self._lidar_dataframe
+
     def write_line(self):
         if self.w_mode:
             self.writer.writerow(self._lidar_dataframe)

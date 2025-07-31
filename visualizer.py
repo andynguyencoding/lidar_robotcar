@@ -9,6 +9,7 @@ import numpy as np
 import os
 import shutil
 import threading
+import traceback
 from pginput import InputBox, DataManager
 
 # constant based on lidar resolution
@@ -146,6 +147,16 @@ class VisualizerWindow:
                                            command=self.toggle_pause, width=12)
         self.play_pause_button.pack(side='left', padx=(0, 5))
         
+        # Prev/Next buttons for inspection mode (initially hidden)
+        self.first_button = ttk.Button(button_frame, text="⏮ First", 
+                                      command=self.first_frame, width=12)
+        self.prev_button = ttk.Button(button_frame, text="◀ Prev", 
+                                     command=self.prev_frame, width=12)
+        self.next_button = ttk.Button(button_frame, text="Next ▶", 
+                                     command=self.next_frame, width=12)
+        self.last_button = ttk.Button(button_frame, text="Last ⏭", 
+                                     command=self.last_frame, width=12)
+        
         self.mode_button = ttk.Button(button_frame, text="Mode: Cont", 
                                      command=self.toggle_inspect, width=12)
         self.mode_button.pack(side='left', padx=(0, 5))
@@ -157,7 +168,7 @@ class VisualizerWindow:
         
         # Keyboard shortcuts info - more compact, on the right side
         shortcuts_label = ttk.Label(button_frame, 
-                                   text="💡 Shortcuts: Space=Play/Pause | I=Mode | A=Augmented | Q=Quit", 
+                                   text="💡 Shortcuts: Space=Play/Next | I=Mode | A=Augmented | Q=Quit | ←→=Prev/Next | Home/End=First/Last", 
                                    font=('Arial', 8), foreground='navy')
         shortcuts_label.pack(side='right', padx=(10, 0))
         
@@ -281,7 +292,7 @@ class VisualizerWindow:
         if event.keysym == 'space':
             if self.inspect_mode:
                 # In inspect mode, space advances to next frame
-                self.advance_frame()
+                self.next_frame()
             else:
                 # In continuous mode, space toggles play/pause
                 self.toggle_pause()
@@ -291,13 +302,90 @@ class VisualizerWindow:
             self.toggle_augmented()
         elif event.keysym.lower() == 'q':
             self.quit_visualizer()
+        elif event.keysym == 'Left' and self.inspect_mode:
+            # Left arrow key for previous frame in inspect mode
+            self.prev_frame()
+        elif event.keysym == 'Right' and self.inspect_mode:
+            # Right arrow key for next frame in inspect mode
+            self.next_frame()
+        elif event.keysym == 'Home' and self.inspect_mode:
+            # Home key for first frame in inspect mode
+            self.first_frame()
+        elif event.keysym == 'End' and self.inspect_mode:
+            # End key for last frame in inspect mode
+            self.last_frame()
+    
+    def prev_frame(self):
+        """Move to previous frame in inspect mode"""
+        if self.inspect_mode and self.data_manager.has_prev():
+            # Move back one frame using DataManager's prev method
+            self.data_manager.prev()
+            
+            # Update display
+            self.distances = self.data_manager.dataframe
+            if len(self.distances) == LIDAR_RESOLUTION + 1:
+                self.render_frame()
+                self.update_inputs()
+            
+            # Update button states after moving
+            self.update_button_states()
+            
+            print(f"Moved to previous frame: {self.data_manager.read_pos + 1}/{len(self.data_manager.lines)}")
+    
+    def next_frame(self):
+        """Move to next frame in inspect mode"""
+        if self.inspect_mode and self.data_manager.has_next():
+            # Move forward one frame using DataManager's next method
+            self.data_manager.next()
+            
+            # Update display
+            self.distances = self.data_manager.dataframe
+            if len(self.distances) == LIDAR_RESOLUTION + 1:
+                self.render_frame()
+                self.update_inputs()
+            
+            # Update button states after moving
+            self.update_button_states()
+            
+            print(f"Moved to next frame: {self.data_manager.read_pos + 1}/{len(self.data_manager.lines)}")
+
+    def first_frame(self):
+        """Jump to first frame in inspect mode"""
+        if self.inspect_mode:
+            # Jump to first frame using DataManager's first method
+            self.data_manager.first()
+            
+            # Update display
+            self.distances = self.data_manager.dataframe
+            if len(self.distances) == LIDAR_RESOLUTION + 1:
+                self.render_frame()
+                self.update_inputs()
+            
+            # Update button states after moving
+            self.update_button_states()
+            
+            print(f"Jumped to first frame: {self.data_manager.read_pos + 1}/{len(self.data_manager.lines)}")
+
+    def last_frame(self):
+        """Jump to last frame in inspect mode"""
+        if self.inspect_mode:
+            # Jump to last frame using DataManager's last method
+            self.data_manager.last()
+            
+            # Update display
+            self.distances = self.data_manager.dataframe
+            if len(self.distances) == LIDAR_RESOLUTION + 1:
+                self.render_frame()
+                self.update_inputs()
+            
+            # Update button states after moving
+            self.update_button_states()
+            
+            print(f"Jumped to last frame: {self.data_manager.read_pos + 1}/{len(self.data_manager.lines)}")
     
     def advance_frame(self):
-        """Advance to next frame in inspect mode"""
-        if self.inspect_mode and self.data_manager.has_next():
-            self.data_manager.write_line()
-            self.data_manager.next()
-            print("Advanced to next frame in inspect mode")
+        """Advance to next frame in inspect mode (legacy method - now uses next_frame)"""
+        self.next_frame()
     
     def toggle_pause(self):
         """Toggle pause state"""
@@ -311,6 +399,9 @@ class VisualizerWindow:
         self.inspect_mode = not self.inspect_mode
         if self.inspect_mode:
             self.paused = True
+        else:
+            # When exiting inspect mode, default to unpaused (playing) state
+            self.paused = False
         self.update_status()
         self.update_button_states()
         print(f'INSPECT MODE: {self.inspect_mode}')
@@ -323,11 +414,41 @@ class VisualizerWindow:
     
     def update_button_states(self):
         """Update button text based on current state"""
-        # Update play/pause button
-        if self.paused:
-            self.play_pause_button.config(text="▶ Play")
+        if self.inspect_mode:
+            # In inspect mode: hide play/pause, show navigation buttons
+            self.play_pause_button.pack_forget()
+            self.first_button.pack(side='left', padx=(0, 2), before=self.mode_button)
+            self.prev_button.pack(side='left', padx=(0, 2), before=self.mode_button)
+            self.next_button.pack(side='left', padx=(0, 2), before=self.mode_button)
+            self.last_button.pack(side='left', padx=(0, 5), before=self.mode_button)
+            
+            # Update navigation button states based on position
+            if not self.data_manager.has_prev():
+                self.prev_button.config(state='disabled')
+                self.first_button.config(state='disabled')
+            else:
+                self.prev_button.config(state='normal')
+                self.first_button.config(state='normal')
+                
+            if not self.data_manager.has_next():
+                self.next_button.config(state='disabled')
+                self.last_button.config(state='disabled')
+            else:
+                self.next_button.config(state='normal')
+                self.last_button.config(state='normal')
         else:
-            self.play_pause_button.config(text="⏸ Pause")
+            # In continuous mode: show play/pause, hide navigation buttons
+            self.first_button.pack_forget()
+            self.prev_button.pack_forget()
+            self.next_button.pack_forget()
+            self.last_button.pack_forget()
+            self.play_pause_button.pack(side='left', padx=(0, 5), before=self.mode_button)
+            
+            # Update play/pause button
+            if self.paused:
+                self.play_pause_button.config(text="▶ Play")
+            else:
+                self.play_pause_button.config(text="⏸ Pause")
         
         # Update mode button
         if self.inspect_mode:
@@ -398,8 +519,12 @@ class VisualizerWindow:
                 messagebox.showerror("Error", "No data manager available for saving")
                 return
             
-            # Save current data frame if available
-            if hasattr(self.data_manager, 'write_line'):
+            # In inspect mode, write the current frame before saving
+            if self.inspect_mode and hasattr(self.data_manager, 'write_line'):
+                self.data_manager.write_line()
+            
+            # Save all data (write remaining frames if in continuous mode)
+            if hasattr(self.data_manager, 'write_line') and not self.inspect_mode:
                 self.data_manager.write_line()
                 
             # Show success message
@@ -451,25 +576,33 @@ class VisualizerWindow:
                 # Split the first line
                 data = first_line.split(',')
                 
+                # For our lidar data format, we expect exactly 361 columns (360 lidar + 1 angular velocity)
+                if len(data) != LIDAR_RESOLUTION + 1:
+                    return False  # Not the expected format
+                
                 # Check if first line contains mostly non-numeric data (likely headers)
                 numeric_count = 0
+                non_numeric_items = []
                 for item in data:
                     try:
                         float(item)
                         numeric_count += 1
                     except (ValueError, TypeError):
-                        pass
+                        non_numeric_items.append(item.strip().lower())
                 
                 # If less than 80% of values are numeric, likely a header
-                if len(data) > 0 and (numeric_count / len(data)) < 0.8:
+                numeric_percentage = (numeric_count / len(data)) * 100
+                if numeric_percentage < 80:
                     return True
                 
-                # Additional check: if first line has typical header words
-                header_keywords = ['lidar', 'angle', 'distance', 'angular', 'velocity', 'x', 'y', 'theta']
-                first_line_lower = first_line.lower()
-                for keyword in header_keywords:
-                    if keyword in first_line_lower:
-                        return True
+                # Additional check: if first line has typical header words AND multiple non-numeric fields
+                # This prevents false positives from data files with mostly numeric data but one text field
+                if len(non_numeric_items) > 1:  # More than one non-numeric field suggests headers
+                    header_keywords = ['lidar', 'angle', 'distance', 'angular', 'velocity', 'x', 'y', 'theta']
+                    for item in non_numeric_items:
+                        for keyword in header_keywords:
+                            if keyword in item:
+                                return True
                 
                 return False
                 
@@ -479,7 +612,6 @@ class VisualizerWindow:
     
     def analyze_data_file(self, data_file):
         """Analyze data file and return statistics (moved from StartupConfigWindow)"""
-        import os
         
         if not os.path.exists(data_file):
             raise FileNotFoundError(f"Data file not found: {data_file}")
@@ -1073,14 +1205,29 @@ Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
             if self.distances and len(self.distances) == LIDAR_RESOLUTION + 1:
                 self.distances[360] = new_turn
                 
-                # Update the data manager's current dataframe (like original pygame observer pattern)
-                if hasattr(self.data_manager, '_lidar_dataframe') and self.data_manager._lidar_dataframe:
-                    self.data_manager._lidar_dataframe[360] = new_turn
-                    print(f"Data manager updated with new turn value: {new_turn}")
+                # Update the data manager's current dataframe and ensure it's marked for saving
+                if hasattr(self.data_manager, 'lines') and self.data_manager.read_pos >= 0:
+                    # Get current line data
+                    current_line_data = self.distances[:]  # Make a copy
+                    
+                    # Update the data manager's internal data
+                    if hasattr(self.data_manager, '_lidar_dataframe'):
+                        self.data_manager._lidar_dataframe = current_line_data
+                    
+                    # Mark this frame as modified for saving
+                    line_str = ','.join(str(val) for val in current_line_data)
+                    if self.data_manager.read_pos < len(self.data_manager.lines):
+                        self.data_manager.lines[self.data_manager.read_pos] = line_str
+                    
+                    print(f"Data manager updated with new turn value: {new_turn} at frame {self.data_manager.read_pos + 1}")
                 
                 # Clear the input field after successful update (like original pygame behavior)
                 self.turn_var.set('')
                 print(f"Angular velocity updated to: {new_turn}")
+                
+                # Update button states in case we're at boundaries
+                if self.inspect_mode:
+                    self.update_button_states()
             else:
                 print("No valid data frame to update")
                 
@@ -1108,7 +1255,7 @@ Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
             
             # Update frame information display
             mode_text = "AUGMENTED" if self.augmented_mode else "REAL"
-            current_frame = self.data_manager.read_pos + 1  # Add 1 for 1-based indexing
+            current_frame = self.data_manager.pointer + 1  # Add 1 for 1-based indexing (pointer is 0-based)
             total_frames = len(self.data_manager.lines)
             self.frame_info_var.set(f"Frame: {current_frame}/{total_frames} [{mode_text}]")
             
@@ -1198,16 +1345,36 @@ Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
             if self.data_manager.has_next():
                 # Get current data
                 if self.data_manager.read_pos < self.data_manager.pointer:
-                    self.distances = self.data_manager.dataframe
-                
-                if len(self.distances) == LIDAR_RESOLUTION + 1:
-                    self.render_frame()
-                    self.update_inputs()
+                    try:
+                        self.distances = self.data_manager.dataframe
+                        
+                        # Validate the distances data
+                        if self.distances and len(self.distances) == LIDAR_RESOLUTION + 1:
+                            # Check for invalid tkinter references in distances
+                            valid_distances = True
+                            for i, val in enumerate(self.distances):
+                                if isinstance(val, str) and (val.startswith('#!') or val.startswith('__tk_')):
+                                    print(f"Warning: Invalid tkinter reference at position {i}: {val}")
+                                    valid_distances = False
+                                    break
+                            
+                            if valid_distances:
+                                self.render_frame()
+                                self.update_inputs()
+                            else:
+                                # Skip this frame
+                                pass
+                        
+                    except Exception as data_error:
+                        print(f"Error processing data frame: {data_error}")
                 
                 # Advance to next frame if not paused
                 if not self.paused:
-                    self.data_manager.write_line()
-                    self.data_manager.next()
+                    try:
+                        self.data_manager.write_line()
+                        self.data_manager.next()
+                    except Exception as advance_error:
+                        print(f"Error advancing frame: {advance_error}")
             else:
                 # End of data
                 print("End of data reached")
@@ -1216,6 +1383,8 @@ Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
         
         except Exception as e:
             print(f"Error in animation: {e}")
+            import traceback
+            traceback.print_exc()
         
         # Schedule next frame
         if self.running:
