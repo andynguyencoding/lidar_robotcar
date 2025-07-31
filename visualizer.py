@@ -3,6 +3,11 @@ import math
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import csv
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import numpy as np
+import os
+import threading
 from pginput import InputBox, DataManager
 
 # constant based on lidar resolution
@@ -18,6 +23,843 @@ DECISIVE_FRAME_POSITIONS = [24, 29, 31, 35, 38, 39, 40, 41, 42, 43, 44, 45, 47, 
                             304, 312, 314, 315, 316, 318, 319, 321, 324, 326, 328, 330]
 
 
+class VisualizerWindow:
+    def __init__(self, config):
+        self.config = config
+        self.running = True
+        self.paused = True  # Start paused by default
+        self.inspect_mode = False  # Start in continuous mode by default (not inspection mode)
+        self.augmented_mode = config['augmented_mode']
+        
+        # Initialize data manager
+        self.data_manager = DataManager(config['data_file'], 'data/run2/_out.txt', False)
+        calculate_scale_factor(self.data_manager)
+        
+        # Create main tkinter window
+        self.root = tk.Tk()
+        self.root.title(f"Lidar Visualizer - {os.path.basename(config['data_file'])}")
+        self.root.geometry("850x750")  # Reduced size for better usability
+        self.root.resizable(True, True)  # Make window resizable
+        self.root.minsize(600, 500)  # Set minimum size
+        
+        # Center the window
+        self.root.update_idletasks()
+        x = (self.root.winfo_screenwidth() // 2) - (850 // 2)
+        y = (self.root.winfo_screenheight() // 2) - (750 // 2)
+        self.root.geometry(f"850x750+{x}+{y}")
+        
+        # Bind resize event for dynamic scaling
+        self.root.bind('<Configure>', self.on_window_resize)
+        
+        # Initialize canvas size before UI setup
+        self.current_canvas_size = 680  # Increased canvas size further due to removed title
+        
+        # Setup UI first
+        self.setup_ui()
+        
+        # Initialize pygame after UI setup
+        self.init_pygame()
+        
+        # Initialize variables
+        self.distances = []
+        
+        # Update button states after everything is set up
+        self.update_button_states()
+        
+        # Bind window close event
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
+        # Setup animation timer
+        self.animate()
+    
+    def on_window_resize(self, event):
+        """Handle window resize events and scale canvas accordingly"""
+        # Only handle resize events from the main window
+        if event.widget == self.root:
+            # Calculate available space for canvas (considering UI elements)
+            # Account for smaller left sidebar (150px) and top controls (no title now)
+            available_width = self.root.winfo_width() - 170  # Account for narrower left sidebar
+            available_height = self.root.winfo_height() - 170  # Account for controls, status, and padding (reduced since no title)
+            
+            # Calculate optimal canvas size (square, limited by smaller dimension)
+            max_canvas_size = min(available_width, available_height, 800)  # Cap at 800px
+            new_canvas_size = max(300, max_canvas_size)  # Minimum 300px
+            
+            # Only update if size changed significantly
+            if abs(new_canvas_size - self.current_canvas_size) > 10:
+                self.current_canvas_size = new_canvas_size
+                self.update_canvas_size()
+    
+    def update_canvas_size(self):
+        """Update the pygame canvas size"""
+        try:
+            # Update pygame frame and canvas size
+            self.pygame_frame.configure(width=self.current_canvas_size, height=self.current_canvas_size)
+            self.canvas.configure(width=self.current_canvas_size, height=self.current_canvas_size)
+            
+            # Reinitialize pygame with new size
+            if hasattr(self, 'screen'):
+                self.screen = pygame.display.set_mode([self.current_canvas_size, self.current_canvas_size])
+                
+        except Exception as e:
+            print(f"Error updating canvas size: {e}")
+    
+    def init_pygame(self):
+        """Initialize pygame with proper embedding"""
+        # Get the tkinter canvas window ID for embedding
+        self.canvas.update()
+        
+        # Set environment variables for pygame embedding
+        embed_info = self.canvas.winfo_id()
+        os.environ['SDL_WINDOWID'] = str(embed_info)
+        if os.name == 'posix':  # Linux/Unix
+            os.environ['SDL_VIDEODRIVER'] = 'x11'
+        
+        # Initialize pygame
+        pygame.init()
+        
+        # Create pygame surface with dynamic size
+        self.screen = pygame.display.set_mode([self.current_canvas_size, self.current_canvas_size])
+        self.clock = pygame.time.Clock()
+        self.font = pygame.font.Font(None, 32)
+    
+    def setup_ui(self):
+        """Setup the tkinter UI components"""
+        # Create menu bar
+        self.create_menu_bar()
+        
+        # Main container
+        main_frame = ttk.Frame(self.root)
+        main_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        # Control buttons panel - moved to top, horizontal layout
+        controls_panel = ttk.LabelFrame(main_frame, text="Controls", padding=5)
+        controls_panel.pack(fill='x', pady=(0, 5))
+        
+        # Create horizontal button layout
+        button_frame = ttk.Frame(controls_panel)
+        button_frame.pack(fill='x')
+        
+        # Control buttons - horizontal layout
+        self.play_pause_button = ttk.Button(button_frame, text="▶ Play", 
+                                           command=self.toggle_pause, width=12)
+        self.play_pause_button.pack(side='left', padx=(0, 5))
+        
+        self.mode_button = ttk.Button(button_frame, text="Mode: Cont", 
+                                     command=self.toggle_inspect, width=12)
+        self.mode_button.pack(side='left', padx=(0, 5))
+        
+        ttk.Button(button_frame, text="Augmented", 
+                  command=self.toggle_augmented, width=12).pack(side='left', padx=(0, 5))
+        ttk.Button(button_frame, text="Quit", 
+                  command=self.quit_visualizer, width=12).pack(side='left', padx=(0, 5))
+        
+        # Keyboard shortcuts info - more compact, on the right side
+        shortcuts_label = ttk.Label(button_frame, 
+                                   text="💡 Shortcuts: Space=Play/Pause | I=Mode | A=Augmented | Q=Quit", 
+                                   font=('Arial', 8), foreground='navy')
+        shortcuts_label.pack(side='right', padx=(10, 0))
+        
+        # Status display - make it more compact
+        status_frame = ttk.LabelFrame(main_frame, text="Status", padding=3)
+        status_frame.pack(fill='x', pady=(0, 5))
+        
+        self.status_var = tk.StringVar()
+        self.status_var.set(f"Data: {os.path.basename(self.config['data_file'])} | Mode: {'INSPECT' if self.inspect_mode else 'CONTINUOUS'} | Data: {'AUGMENTED' if self.augmented_mode else 'REAL'}")
+        ttk.Label(status_frame, textvariable=self.status_var, 
+                 font=('Courier', 9)).pack()
+        
+        # Create horizontal layout for main content
+        content_frame = ttk.Frame(main_frame)
+        content_frame.pack(fill='both', expand=True, pady=(0, 5))
+        
+        # Left sidebar - narrower, only input controls
+        left_sidebar = ttk.Frame(content_frame, width=150)  # Reduced from default width
+        left_sidebar.pack(side='left', fill='y', padx=(0, 5))
+        left_sidebar.pack_propagate(False)  # Maintain fixed width
+        
+        # Input Controls panel (only panel in left sidebar now)
+        input_panel = ttk.LabelFrame(left_sidebar, text="🎮 Input Controls", padding=6)
+        input_panel.pack(fill='both', expand=True)
+        
+        # Angular velocity input
+        ttk.Label(input_panel, text="Angular Velocity:", 
+                 font=('Arial', 9, 'bold'), foreground='darkblue').pack(anchor='w', pady=(0, 2))
+        
+        self.turn_var = tk.StringVar()
+        self.turn_entry = ttk.Entry(input_panel, textvariable=self.turn_var, 
+                                   width=18, font=('Courier', 9))
+        self.turn_entry.pack(pady=(0, 5), fill='x')
+        
+        # Status info below angular velocity input
+        self.frame_info_var = tk.StringVar()
+        self.frame_info_var.set("Frame: -- [--]")
+        frame_info_label = ttk.Label(input_panel, textvariable=self.frame_info_var, 
+                                    font=('Courier', 8), foreground='blue')
+        frame_info_label.pack(pady=(0, 5), fill='x')
+        
+        # Instructions for angular velocity
+        ttk.Label(input_panel, text="📝 Press Enter to update", 
+                 font=('Arial', 7), foreground='darkgreen', 
+                 wraplength=140).pack(anchor='w', pady=(0, 8), fill='x')
+        
+        # Linear velocity input
+        ttk.Label(input_panel, text="Linear Velocity:", 
+                 font=('Arial', 9, 'bold'), foreground='darkblue').pack(anchor='w', pady=(0, 2))
+        
+        self.linear_var = tk.StringVar()
+        self.linear_entry = ttk.Entry(input_panel, textvariable=self.linear_var, 
+                                     width=18, font=('Courier', 9))
+        self.linear_entry.pack(pady=(0, 5), fill='x')
+        
+        # Instructions for linear velocity
+        ttk.Label(input_panel, text="⚠️ Not implemented", 
+                 font=('Arial', 7), foreground='gray', 
+                 wraplength=140).pack(anchor='w', pady=(0, 8), fill='x')
+        
+        # Resize instruction in input panel
+        resize_label = ttk.Label(input_panel, 
+                                text="🔧 Resize window to scale visualizer", 
+                                font=('Arial', 7), foreground='purple', 
+                                justify='center', wraplength=140)
+        resize_label.pack(pady=(8, 0), fill='x')
+        
+        # Center panel - Pygame canvas (now takes up much more space)
+        center_panel = ttk.LabelFrame(content_frame, text="Lidar Visualization", padding=5)
+        center_panel.pack(side='left', fill='both', expand=True, padx=(5, 0))
+        
+        # Create a frame for pygame embedding with dynamic size
+        self.pygame_frame = tk.Frame(center_panel, width=self.current_canvas_size, height=self.current_canvas_size, bg='lightgray')
+        self.pygame_frame.pack(pady=5, expand=True, fill='both')
+        self.pygame_frame.pack_propagate(False)  # Prevent frame from shrinking
+        
+        # Create a canvas widget for pygame to render into
+        self.canvas = tk.Canvas(self.pygame_frame, width=self.current_canvas_size, height=self.current_canvas_size, bg='white')
+        self.canvas.pack(expand=True)
+        
+        # Initialize the button states after setup
+        self.update_button_states()
+        
+        # Bind Enter key to input fields for data update (matching original pygame behavior)
+        self.turn_entry.bind('<Return>', self.on_angular_velocity_input)
+        self.linear_entry.bind('<Return>', self.on_linear_velocity_input)
+        
+        # Bind keyboard events to root window
+        self.root.bind('<KeyPress>', self.on_key_press)
+        self.root.focus_set()  # Allow window to receive key events
+    
+    def create_menu_bar(self):
+        """Create the main menu bar"""
+        menubar = tk.Menu(self.root)
+        self.root.config(menu=menubar)
+        
+        # File menu
+        file_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="File", menu=file_menu)
+        file_menu.add_command(label="Browse Data...", command=self.browse_data_file, accelerator="Ctrl+O")
+        file_menu.add_separator()
+        file_menu.add_command(label="Save Data", command=self.save_data, accelerator="Ctrl+S")
+        
+        # Data menu
+        data_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Data", menu=data_menu)
+        data_menu.add_command(label="Show Statistics...", command=self.show_data_statistics, accelerator="Ctrl+I")
+        
+        # Visual menu
+        visual_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Visual", menu=visual_menu)
+        visual_menu.add_command(label="Scale Factor...", command=self.show_scale_factor_dialog)
+        
+        # Bind keyboard shortcuts
+        self.root.bind_all("<Control-o>", lambda e: self.browse_data_file())
+        self.root.bind_all("<Control-s>", lambda e: self.save_data())
+        self.root.bind_all("<Control-i>", lambda e: self.show_data_statistics())
+    
+    def on_key_press(self, event):
+        """Handle keyboard events"""
+        if event.keysym == 'space':
+            if self.inspect_mode:
+                # In inspect mode, space advances to next frame
+                self.advance_frame()
+            else:
+                # In continuous mode, space toggles play/pause
+                self.toggle_pause()
+        elif event.keysym.lower() == 'i':
+            self.toggle_inspect()
+        elif event.keysym.lower() == 'a':
+            self.toggle_augmented()
+        elif event.keysym.lower() == 'q':
+            self.quit_visualizer()
+    
+    def advance_frame(self):
+        """Advance to next frame in inspect mode"""
+        if self.inspect_mode and self.data_manager.has_next():
+            self.data_manager.write_line()
+            self.data_manager.next()
+            print("Advanced to next frame in inspect mode")
+    
+    def toggle_pause(self):
+        """Toggle pause state"""
+        self.paused = not self.paused
+        self.update_status()
+        self.update_button_states()
+        print(f'PAUSE STATUS: {self.paused}')
+    
+    def toggle_inspect(self):
+        """Toggle inspection mode"""
+        self.inspect_mode = not self.inspect_mode
+        if self.inspect_mode:
+            self.paused = True
+        self.update_status()
+        self.update_button_states()
+        print(f'INSPECT MODE: {self.inspect_mode}')
+    
+    def toggle_augmented(self):
+        """Toggle augmented mode"""
+        self.augmented_mode = not self.augmented_mode
+        print(f'AUGMENTED MODE: {self.augmented_mode}')
+        self.update_status()
+    
+    def update_button_states(self):
+        """Update button text based on current state"""
+        # Update play/pause button
+        if self.paused:
+            self.play_pause_button.config(text="▶ Play")
+        else:
+            self.play_pause_button.config(text="⏸ Pause")
+        
+        # Update mode button
+        if self.inspect_mode:
+            self.mode_button.config(text="Mode: Inspect")
+        else:
+            self.mode_button.config(text="Mode: Cont")
+    
+    def update_status(self):
+        """Update status display"""
+        mode_text = 'INSPECT' if self.inspect_mode else 'CONTINUOUS'
+        if self.paused and not self.inspect_mode:
+            mode_text = 'PAUSED'
+        
+        data_text = 'AUGMENTED' if self.augmented_mode else 'REAL'
+        
+        self.status_var.set(f"Data: {os.path.basename(self.config['data_file'])} | Mode: {mode_text} | Data: {data_text}")
+    
+    def browse_data_file(self):
+        """Browse for a new data file and load it"""
+        file_types = [
+            ("CSV files", "*.csv"),
+            ("Text files", "*.txt"),
+            ("All files", "*.*")
+        ]
+        
+        filename = filedialog.askopenfilename(
+            title="Select Data File",
+            filetypes=file_types,
+            initialdir="/home/andy"
+        )
+        
+        if filename:
+            try:
+                # Update status to show loading
+                old_status = self.status_var.get()
+                self.status_var.set("Loading new data file...")
+                self.root.update()
+                
+                # Create new data manager with the selected file
+                self.data_manager = DataManager(filename, 'data/run2/_out.txt', False)
+                calculate_scale_factor(self.data_manager)
+                
+                # Update config
+                self.config['data_file'] = filename
+                
+                # Update window title
+                self.root.title(f"Lidar Visualizer - {os.path.basename(filename)}")
+                
+                # Reset visualization state
+                self.distances = []
+                
+                # Update status to show success
+                self.status_var.set(f"Data loaded: {os.path.basename(filename)} | Mode: {'INSPECT' if self.inspect_mode else 'CONTINUOUS'} | Data: {'AUGMENTED' if self.augmented_mode else 'REAL'}")
+                
+                print(f"Successfully loaded data file: {filename}")
+                
+            except Exception as e:
+                error_msg = f"Failed to load data file: {str(e)}"
+                messagebox.showerror("Error", error_msg)
+                self.status_var.set(old_status)  # Restore previous status
+                print(f"Error loading data file: {e}")
+    
+    def save_data(self):
+        """Save the current data using DataManager's write functionality"""
+        try:
+            # Check if we have data manager and it has an output file configured
+            if not hasattr(self, 'data_manager') or not self.data_manager:
+                messagebox.showerror("Error", "No data manager available for saving")
+                return
+            
+            # Save current data frame if available
+            if hasattr(self.data_manager, 'write_line'):
+                self.data_manager.write_line()
+                
+            # Show success message
+            out_file = getattr(self.data_manager, 'out_file', 'output file')
+            self.status_var.set(f"Data saved to {os.path.basename(out_file)} | Mode: {'INSPECT' if self.inspect_mode else 'CONTINUOUS'} | Data: {'AUGMENTED' if self.augmented_mode else 'REAL'}")
+            messagebox.showinfo("Success", f"Data saved successfully to {os.path.basename(out_file)}")
+            print(f"Data saved to: {out_file}")
+            
+        except Exception as e:
+            error_msg = f"Failed to save data: {str(e)}"
+            messagebox.showerror("Error", error_msg)
+            print(f"Error saving data: {e}")
+    
+    def show_data_statistics(self):
+        """Show data statistics popup for current data file"""
+        try:
+            if not hasattr(self, 'data_manager') or not self.data_manager:
+                messagebox.showerror("Error", "No data loaded")
+                return
+            
+            # Update status to show analysis in progress
+            old_status = self.status_var.get()
+            self.status_var.set("Analyzing data...")
+            self.root.update()
+            
+            # Analyze the current data file
+            stats = self.analyze_data_file(self.config['data_file'])
+            
+            # Show statistics popup (reuse the method from StartupConfigWindow)
+            self.display_data_statistics(stats, self.config['data_file'])
+            
+            # Restore status
+            self.status_var.set(old_status)
+            
+        except Exception as e:
+            error_msg = f"Failed to analyze data: {str(e)}"
+            messagebox.showerror("Error", error_msg)
+            self.status_var.set(old_status if 'old_status' in locals() else "Error analyzing data")
+            print(f"Error analyzing data: {e}")
+    
+    def analyze_data_file(self, data_file):
+        """Analyze data file and return statistics (moved from StartupConfigWindow)"""
+        import os
+        
+        if not os.path.exists(data_file):
+            raise FileNotFoundError(f"Data file not found: {data_file}")
+        
+        angular_velocities = []
+        total_invalid_count = 0
+        frames_with_invalid = 0
+        total_frames = 0
+        
+        with open(data_file, 'r') as f:
+            for line_num, line in enumerate(f, 1):
+                line = line.strip()
+                if not line:
+                    continue
+                
+                try:
+                    data = line.split(',')
+                    if len(data) == LIDAR_RESOLUTION + 1:  # 360 lidar + 1 turn value
+                        total_frames += 1
+                        
+                        # Check for invalid data in lidar readings
+                        invalid_in_frame = 0
+                        for i in range(LIDAR_RESOLUTION):
+                            try:
+                                value = float(data[i])
+                                if math.isinf(value) or math.isnan(value):
+                                    invalid_in_frame += 1
+                            except (ValueError, TypeError):
+                                invalid_in_frame += 1
+                        
+                        if invalid_in_frame > 0:
+                            frames_with_invalid += 1
+                            total_invalid_count += invalid_in_frame
+                        
+                        # Extract angular velocity (last column)
+                        try:
+                            ang_vel = float(data[360])
+                            if not (math.isinf(ang_vel) or math.isnan(ang_vel)):
+                                angular_velocities.append(ang_vel)
+                        except (ValueError, TypeError):
+                            pass  # Skip non-numeric angular velocities
+                            
+                except Exception as e:
+                    print(f"Warning: Could not process line {line_num}: {e}")
+        
+        return {
+            'angular_velocities': angular_velocities,
+            'total_invalid_count': total_invalid_count,
+            'frames_with_invalid': frames_with_invalid,
+            'total_frames': total_frames,
+            'file_path': data_file
+        }
+    
+    def display_data_statistics(self, stats, data_file):
+        """Display data statistics in a popup window (moved from StartupConfigWindow)"""
+        import os
+        
+        # Create popup window
+        popup = tk.Toplevel(self.root)
+        popup.title(f"Data Statistics - {os.path.basename(data_file)}")
+        popup.geometry("800x600")
+        popup.resizable(True, True)
+        
+        # Center the popup
+        popup.update_idletasks()
+        x = (popup.winfo_screenwidth() // 2) - (800 // 2)
+        y = (popup.winfo_screenheight() // 2) - (600 // 2)
+        popup.geometry(f"800x600+{x}+{y}")
+        
+        # Make popup modal
+        popup.transient(self.root)
+        popup.grab_set()
+        
+        # Create main frame
+        main_frame = ttk.Frame(popup)
+        main_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        # Title
+        title_label = ttk.Label(main_frame, text="Data Analysis Results", 
+                               font=('Arial', 14, 'bold'))
+        title_label.pack(pady=(0, 10))
+        
+        # Statistics text
+        stats_frame = ttk.LabelFrame(main_frame, text="Data Quality", padding=10)
+        stats_frame.pack(fill='x', pady=(0, 10))
+        
+        stats_text = f"""Total Frames: {stats['total_frames']}
+Frames with Invalid Data: {stats['frames_with_invalid']} ({stats['frames_with_invalid']/max(stats['total_frames'], 1)*100:.1f}%)
+Total Invalid Data Points: {stats['total_invalid_count']}
+Valid Angular Velocity Values: {len(stats['angular_velocities'])}"""
+        
+        ttk.Label(stats_frame, text=stats_text, font=('Courier', 10)).pack(anchor='w')
+        
+        # Histogram
+        if stats['angular_velocities']:
+            hist_frame = ttk.LabelFrame(main_frame, text="Angular Velocity Distribution", padding=10)
+            hist_frame.pack(fill='both', expand=True)
+            
+            # Create matplotlib figure
+            fig, ax = plt.subplots(figsize=(10, 6))
+            
+            # Create histogram with 20 bins
+            n, bins, patches = ax.hist(stats['angular_velocities'], bins=20, 
+                                     edgecolor='black', alpha=0.7, color='skyblue')
+            
+            ax.set_xlabel('Angular Velocity Value')
+            ax.set_ylabel('Frequency')
+            ax.set_title('Distribution of Angular Velocity Values (20 bins)')
+            ax.grid(True, alpha=0.3)
+            
+            # Add statistics text on the plot
+            ax.text(0.02, 0.98, f'Mean: {np.mean(stats["angular_velocities"]):.3f}\n'
+                                f'Std: {np.std(stats["angular_velocities"]):.3f}\n'
+                                f'Min: {np.min(stats["angular_velocities"]):.3f}\n'
+                                f'Max: {np.max(stats["angular_velocities"]):.3f}',
+                   transform=ax.transAxes, verticalalignment='top',
+                   bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+            
+            # Embed plot in tkinter
+            canvas = FigureCanvasTkAgg(fig, hist_frame)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill='both', expand=True)
+        else:
+            ttk.Label(main_frame, text="No valid angular velocity data found!", 
+                     foreground='red', font=('Arial', 12)).pack(pady=20)
+        
+        # Close button
+        close_button = ttk.Button(main_frame, text="Close", 
+                                 command=popup.destroy, width=15)
+        close_button.pack(pady=10)
+    
+    def show_scale_factor_dialog(self):
+        """Show scale factor configuration dialog"""
+        # Create popup window
+        popup = tk.Toplevel(self.root)
+        popup.title("Scale Factor Configuration")
+        popup.geometry("400x250")  # Increased height from 200 to 250
+        popup.resizable(False, False)
+        
+        # Center the popup
+        popup.update_idletasks()
+        x = (popup.winfo_screenwidth() // 2) - (400 // 2)
+        y = (popup.winfo_screenheight() // 2) - (250 // 2)  # Updated for new height
+        popup.geometry(f"400x250+{x}+{y}")
+        
+        # Make popup modal
+        popup.transient(self.root)
+        popup.grab_set()
+        
+        # Create main frame
+        main_frame = ttk.Frame(popup)
+        main_frame.pack(fill='both', expand=True, padx=20, pady=20)
+        
+        # Title
+        title_label = ttk.Label(main_frame, text="Lidar Visualization Scale Factor", 
+                               font=('Arial', 12, 'bold'))
+        title_label.pack(pady=(0, 15))
+        
+        # Description
+        desc_label = ttk.Label(main_frame, 
+                              text="Adjust the scale factor to control the visualization size.\nHigher values make distant objects appear closer.",
+                              font=('Arial', 9), justify='center')
+        desc_label.pack(pady=(0, 15))
+        
+        # Scale factor input frame
+        input_frame = ttk.Frame(main_frame)
+        input_frame.pack(pady=(0, 20))
+        
+        ttk.Label(input_frame, text="Scale Factor:", 
+                 font=('Arial', 10, 'bold')).pack(side='left', padx=(0, 10))
+        
+        # Scale factor variable and entry
+        scale_var = tk.StringVar()
+        scale_var.set(f"{SCALE_FACTOR:.4f}")
+        
+        scale_entry = ttk.Entry(input_frame, textvariable=scale_var, 
+                               width=12, font=('Courier', 10))
+        scale_entry.pack(side='left')
+        scale_entry.focus_set()  # Focus on the entry field
+        
+        # Current value info
+        info_frame = ttk.Frame(main_frame)
+        info_frame.pack(pady=(0, 20))
+        
+        ttk.Label(info_frame, text=f"Current: {SCALE_FACTOR:.4f}", 
+                 font=('Arial', 8), foreground='blue').pack()
+        ttk.Label(info_frame, text="Range: 0.001 - 9999.0", 
+                 font=('Arial', 8), foreground='gray').pack()
+        
+        # Button frame
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack()
+        
+        def apply_scale_factor():
+            """Apply the new scale factor"""
+            try:
+                new_scale = float(scale_var.get())
+                
+                # Validate range
+                if new_scale <= 0 or new_scale >= 9999:
+                    messagebox.showerror("Invalid Value", 
+                                       "Scale factor must be greater than 0 and less than 9999")
+                    return
+                
+                # Update global scale factor
+                global SCALE_FACTOR
+                SCALE_FACTOR = new_scale
+                
+                # Update status to show change
+                self.status_var.set(f"Scale factor updated to {SCALE_FACTOR:.4f} | Mode: {'INSPECT' if self.inspect_mode else 'CONTINUOUS'} | Data: {'AUGMENTED' if self.augmented_mode else 'REAL'}")
+                
+                popup.destroy()
+                print(f"Scale factor updated to: {SCALE_FACTOR:.4f}")
+                
+            except ValueError:
+                messagebox.showerror("Invalid Value", 
+                                   "Please enter a valid numeric value for scale factor")
+        
+        def cancel_dialog():
+            """Cancel the dialog"""
+            popup.destroy()
+        
+        # OK and Cancel buttons
+        ttk.Button(button_frame, text="OK", command=apply_scale_factor, 
+                  width=10).pack(side='left', padx=(0, 10))
+        ttk.Button(button_frame, text="Cancel", command=cancel_dialog, 
+                  width=10).pack(side='left')
+        
+        # Bind Enter key to apply changes
+        scale_entry.bind('<Return>', lambda e: apply_scale_factor())
+        popup.bind('<Escape>', lambda e: cancel_dialog())
+    
+    def quit_visualizer(self):
+        """Quit the visualizer"""
+        self.running = False
+        self.on_closing()
+    
+    def on_closing(self):
+        """Handle window closing"""
+        self.running = False
+        try:
+            pygame.quit()
+        except:
+            pass
+        self.root.destroy()
+    
+    def on_angular_velocity_input(self, event):
+        """Handle angular velocity input - matches original pygame InputBox behavior"""
+        try:
+            new_turn = self.turn_var.get()
+            print(f"Angular velocity input received: {new_turn}")
+            
+            # Update the current data frame with new angular velocity
+            if self.distances and len(self.distances) == LIDAR_RESOLUTION + 1:
+                self.distances[360] = new_turn
+                
+                # Update the data manager's current dataframe (like original pygame observer pattern)
+                if hasattr(self.data_manager, '_lidar_dataframe') and self.data_manager._lidar_dataframe:
+                    self.data_manager._lidar_dataframe[360] = new_turn
+                    print(f"Data manager updated with new turn value: {new_turn}")
+                
+                # Clear the input field after successful update (like original pygame behavior)
+                self.turn_var.set('')
+                print(f"Angular velocity updated to: {new_turn}")
+            else:
+                print("No valid data frame to update")
+                
+        except Exception as e:
+            print(f"Error updating angular velocity: {e}")
+    
+    def on_linear_velocity_input(self, event):
+        """Handle linear velocity input - placeholder for future implementation"""
+        linear_value = self.linear_var.get()
+        print(f"Linear velocity input received (not yet implemented): {linear_value}")
+        # Clear the input field
+        self.linear_var.set('')
+    
+    def update_inputs(self):
+        """Update tkinter input fields with current data"""
+        if self.distances and len(self.distances) == LIDAR_RESOLUTION + 1:
+            # Update angular velocity field with current value (if not actively being edited)
+            if not self.turn_entry.focus_get() == self.turn_entry:  # Only update if not focused
+                try:
+                    turn_value = float(self.distances[360])
+                    display_turn = -turn_value if self.augmented_mode else turn_value
+                    self.turn_var.set(f"{display_turn:.2f}")
+                except (ValueError, TypeError):
+                    self.turn_var.set(str(self.distances[360]))
+            
+            # Update frame information display
+            mode_text = "AUGMENTED" if self.augmented_mode else "REAL"
+            current_frame = self.data_manager.read_pos + 1  # Add 1 for 1-based indexing
+            total_frames = len(self.data_manager.lines)
+            self.frame_info_var.set(f"Frame: {current_frame}/{total_frames} [{mode_text}]")
+            
+            # Update linear velocity field (placeholder - keep empty for now)
+            if not self.linear_entry.focus_get() == self.linear_entry:
+                self.linear_var.set("")  # Keep empty as it's not implemented
+    
+    def render_frame(self):
+        """Render the current lidar frame"""
+        if not hasattr(self, 'screen'):
+            return
+            
+        try:
+            # Fill background
+            self.screen.fill((250, 250, 250))
+            
+            # Calculate center and scale based on current canvas size
+            center_x = self.current_canvas_size / 2
+            center_y = self.current_canvas_size / 2
+            
+            # Dynamic scale factor based on canvas size
+            dynamic_scale = SCALE_FACTOR * (self.current_canvas_size / 800)  # 800 is the original SCREEN_WIDTH
+            
+            # Render lidar points
+            for x in range(LIDAR_RESOLUTION):
+                try:
+                    distance_value = float(self.distances[x])
+                    if math.isinf(distance_value) or math.isnan(distance_value):
+                        continue
+                except (ValueError, TypeError):
+                    continue
+                    
+                a = distance_value * dynamic_scale
+                
+                # Choose coordinates based on augmented mode
+                if self.augmented_mode:
+                    x_coord = math.cos(x / 180 * math.pi) * a + center_x
+                    y_coord = math.sin(x / 180 * math.pi) * a + center_y
+                else:
+                    x_coord = math.cos(x / 180 * math.pi) * a + center_x
+                    y_coord = -math.sin(x / 180 * math.pi) * a + center_y
+                
+                if x in DECISIVE_FRAME_POSITIONS:
+                    # Draw line and important point
+                    pygame.draw.line(self.screen, (255, 0, 255), (center_x, center_y),
+                                   (x_coord, y_coord), 2)
+                    pygame.draw.circle(self.screen, (255, 0, 0), (x_coord, y_coord), 3)
+                else:
+                    pygame.draw.circle(self.screen, (0, 0, 0), (x_coord, y_coord), 2)
+            
+            # Draw car (scaled)
+            car_radius = max(6, int(12 * (self.current_canvas_size / 800)))
+            car_line_length = max(20, int(40 * (self.current_canvas_size / 800)))
+            
+            pygame.draw.circle(self.screen, (252, 132, 3), (center_x, center_y), car_radius)
+            pygame.draw.line(self.screen, (0, 0, 255), (center_x, center_y),
+                            (center_x + car_line_length, center_y), 3)
+            
+            # Draw turn direction (scaled)
+            try:
+                turn_value = float(self.distances[360])
+                if self.augmented_mode:
+                    turn_value = -turn_value
+                x = math.cos(turn_value * math.pi / 4) * car_line_length
+                y = math.sin(turn_value * math.pi / 4) * car_line_length
+                # Flip Y coordinate to match lidar coordinate system (pygame Y increases downward)
+                pygame.draw.line(self.screen, (0, 255, 0), (center_x, center_y),
+                               (center_x + x, center_y - y), 3)
+            except (ValueError, TypeError):
+                pass
+            
+            pygame.display.flip()
+        except Exception as e:
+            print(f"Error rendering frame: {e}")
+    
+    def animate(self):
+        """Animation loop using tkinter's after method"""
+        if not self.running:
+            return
+            
+        try:
+            # Handle inspection mode
+            if self.inspect_mode:
+                self.paused = True
+            
+            # Process data if available
+            if self.data_manager.has_next():
+                # Get current data
+                if self.data_manager.read_pos < self.data_manager.pointer:
+                    self.distances = self.data_manager.dataframe
+                
+                if len(self.distances) == LIDAR_RESOLUTION + 1:
+                    self.render_frame()
+                    self.update_inputs()
+                
+                # Advance to next frame if not paused
+                if not self.paused:
+                    self.data_manager.write_line()
+                    self.data_manager.next()
+            else:
+                # End of data
+                print("End of data reached")
+                self.running = False
+                return
+        
+        except Exception as e:
+            print(f"Error in animation: {e}")
+        
+        # Schedule next frame
+        if self.running:
+            self.root.after(100, self.animate)  # ~10 FPS
+    
+    def run(self):
+        """Start the visualizer"""
+        try:
+            self.root.mainloop()
+        except Exception as e:
+            print(f"Error in visualizer: {e}")
+        finally:
+            self.running = False
+            try:
+                pygame.quit()
+            except:
+                pass
+
+
 class StartupConfigWindow:
     def __init__(self, preset_data_file=None):
         self.root = tk.Tk()
@@ -28,10 +870,10 @@ class StartupConfigWindow:
         if preset_data_file:
             self.data_file = tk.StringVar(value=preset_data_file)
             # Make window taller when showing preset data info
-            window_height = 450
+            window_height = 500
         else:
             self.data_file = tk.StringVar(value='data/run1/out1.txt')
-            window_height = 400
+            window_height = 450
         
         self.root.geometry(f"520x{window_height}")
         self.root.resizable(False, False)
@@ -53,6 +895,7 @@ class StartupConfigWindow:
         self.concatenate_data = tk.BooleanVar(value=False)
         self.selected_file_type = tk.StringVar(value='local')  # 'local', 'browse', or 'preset'
         self.browsed_file_path = tk.StringVar(value="")
+        self.data_loaded = False  # Track if data has been loaded
         
         self.config_selected = False
         
@@ -112,15 +955,19 @@ class StartupConfigWindow:
             self.selected_file_type.set('preset')
         else:
             # Normal selectable options
-            ttk.Radiobutton(file_frame, text="Local data (data/run1/out1.txt)", 
-                           variable=self.selected_file_type, value='local').pack(anchor='w', pady=1)
+            radio1 = ttk.Radiobutton(file_frame, text="Local data (data/run1/out1.txt)", 
+                                   variable=self.selected_file_type, value='local',
+                                   command=self.on_file_type_change)
+            radio1.pack(anchor='w', pady=1)
             
             # Browse option with button
             browse_frame = ttk.Frame(file_frame)
             browse_frame.pack(fill='x', pady=1)
             
-            ttk.Radiobutton(browse_frame, text="Browse for file:", 
-                           variable=self.selected_file_type, value='browse').pack(side='left')
+            radio2 = ttk.Radiobutton(browse_frame, text="Browse for file:", 
+                                   variable=self.selected_file_type, value='browse',
+                                   command=self.on_file_type_change)
+            radio2.pack(side='left')
             
             browse_button = ttk.Button(browse_frame, text="Browse...", 
                                      command=self.browse_file, width=12)
@@ -152,6 +999,14 @@ class StartupConfigWindow:
         info_label = ttk.Label(self.root, text="Note: Concatenation will double your dataset size", 
                               font=('Arial', 8), foreground='gray')
         info_label.pack(pady=3)
+        
+        # Load Data button
+        load_frame = ttk.Frame(self.root)
+        load_frame.pack(pady=10)
+        
+        self.load_button = ttk.Button(load_frame, text="📊 Load Data & Show Statistics", 
+                                     command=self.load_and_analyze_data, width=30)
+        self.load_button.pack()
         
         # Buttons - ensure they're always visible
         button_frame = ttk.Frame(self.root)
@@ -198,6 +1053,9 @@ class StartupConfigWindow:
             
             self.file_path_label.config(text=f"Selected: {display_path}", 
                                       foreground='darkgreen')
+            
+            # Re-enable the Load Data button when a new file is selected
+            self.reset_load_button()
         else:
             # User cancelled, reset if no file was previously selected
             if not self.browsed_file_path.get():
@@ -216,6 +1074,193 @@ class StartupConfigWindow:
             return self.preset_data_file
         else:
             return 'data/run1/out1.txt'  # fallback
+    
+    def reset_load_button(self):
+        """Reset the Load Data button to its initial state"""
+        self.data_loaded = False
+        if hasattr(self, 'load_button'):
+            current_file = self.get_selected_data_file()
+            if current_file and current_file != 'data/run1/out1.txt':
+                # Show file name in button for non-default files
+                import os
+                filename = os.path.basename(current_file)
+                if len(filename) > 20:
+                    filename = filename[:17] + "..."
+                self.load_button.config(state='normal', text=f"📊 Load {filename}")
+            else:
+                self.load_button.config(state='normal', text="📊 Load Data & Show Statistics")
+    
+    def on_file_type_change(self):
+        """Called when file type selection changes"""
+        self.reset_load_button()
+    
+    def load_and_analyze_data(self):
+        """Load data file and show statistics popup"""
+        # Get the selected data file
+        data_file = self.get_selected_data_file()
+        
+        # Validate file selection
+        if self.selected_file_type.get() == 'browse' and not self.browsed_file_path.get():
+            messagebox.showerror("Error", "Please select a file first!")
+            return
+        
+        # Gray out the load button
+        self.load_button.config(state='disabled', text="📊 Loading Data...")
+        self.root.update()
+        
+        try:
+            # Analyze the data
+            stats = self.analyze_data_file(data_file)
+            
+            # Show statistics popup
+            self.show_data_statistics(stats, data_file)
+            
+            self.data_loaded = True
+            # Show success message with file info
+            import os
+            filename = os.path.basename(data_file)
+            if len(filename) > 15:
+                filename = filename[:12] + "..."
+            self.load_button.config(text=f"📊 {filename} Loaded ✓")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load data: {str(e)}")
+            # Reset button to initial state on error
+            self.reset_load_button()
+    
+    def analyze_data_file(self, data_file):
+        """Analyze data file and return statistics"""
+        import os
+        
+        if not os.path.exists(data_file):
+            raise FileNotFoundError(f"Data file not found: {data_file}")
+        
+        angular_velocities = []
+        total_invalid_count = 0
+        frames_with_invalid = 0
+        total_frames = 0
+        
+        with open(data_file, 'r') as f:
+            for line_num, line in enumerate(f, 1):
+                line = line.strip()
+                if not line:
+                    continue
+                
+                try:
+                    data = line.split(',')
+                    if len(data) == LIDAR_RESOLUTION + 1:  # 360 lidar + 1 turn value
+                        total_frames += 1
+                        
+                        # Check for invalid data in lidar readings
+                        invalid_in_frame = 0
+                        for i in range(LIDAR_RESOLUTION):
+                            try:
+                                value = float(data[i])
+                                if math.isinf(value) or math.isnan(value):
+                                    invalid_in_frame += 1
+                            except (ValueError, TypeError):
+                                invalid_in_frame += 1
+                        
+                        if invalid_in_frame > 0:
+                            frames_with_invalid += 1
+                            total_invalid_count += invalid_in_frame
+                        
+                        # Extract angular velocity (last column)
+                        try:
+                            ang_vel = float(data[360])
+                            if not (math.isinf(ang_vel) or math.isnan(ang_vel)):
+                                angular_velocities.append(ang_vel)
+                        except (ValueError, TypeError):
+                            pass  # Skip non-numeric angular velocities
+                            
+                except Exception as e:
+                    print(f"Warning: Could not process line {line_num}: {e}")
+        
+        return {
+            'angular_velocities': angular_velocities,
+            'total_invalid_count': total_invalid_count,
+            'frames_with_invalid': frames_with_invalid,
+            'total_frames': total_frames,
+            'file_path': data_file
+        }
+    
+    def show_data_statistics(self, stats, data_file):
+        """Show data statistics in a popup window"""
+        import os
+        
+        # Create popup window
+        popup = tk.Toplevel(self.root)
+        popup.title(f"Data Statistics - {os.path.basename(data_file)}")
+        popup.geometry("800x600")
+        popup.resizable(True, True)
+        
+        # Center the popup
+        popup.update_idletasks()
+        x = (popup.winfo_screenwidth() // 2) - (800 // 2)
+        y = (popup.winfo_screenheight() // 2) - (600 // 2)
+        popup.geometry(f"800x600+{x}+{y}")
+        
+        # Make popup modal
+        popup.transient(self.root)
+        popup.grab_set()
+        
+        # Create main frame with scrollbar
+        main_frame = ttk.Frame(popup)
+        main_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        # Title
+        title_label = ttk.Label(main_frame, text="Data Analysis Results", 
+                               font=('Arial', 14, 'bold'))
+        title_label.pack(pady=(0, 10))
+        
+        # Statistics text
+        stats_frame = ttk.LabelFrame(main_frame, text="Data Quality", padding=10)
+        stats_frame.pack(fill='x', pady=(0, 10))
+        
+        stats_text = f"""Total Frames: {stats['total_frames']}
+Frames with Invalid Data: {stats['frames_with_invalid']} ({stats['frames_with_invalid']/max(stats['total_frames'], 1)*100:.1f}%)
+Total Invalid Data Points: {stats['total_invalid_count']}
+Valid Angular Velocity Values: {len(stats['angular_velocities'])}"""
+        
+        ttk.Label(stats_frame, text=stats_text, font=('Courier', 10)).pack(anchor='w')
+        
+        # Histogram
+        if stats['angular_velocities']:
+            hist_frame = ttk.LabelFrame(main_frame, text="Angular Velocity Distribution", padding=10)
+            hist_frame.pack(fill='both', expand=True)
+            
+            # Create matplotlib figure
+            fig, ax = plt.subplots(figsize=(10, 6))
+            
+            # Create histogram with 20 bins
+            n, bins, patches = ax.hist(stats['angular_velocities'], bins=20, 
+                                     edgecolor='black', alpha=0.7, color='skyblue')
+            
+            ax.set_xlabel('Angular Velocity Value')
+            ax.set_ylabel('Frequency')
+            ax.set_title('Distribution of Angular Velocity Values (20 bins)')
+            ax.grid(True, alpha=0.3)
+            
+            # Add statistics text on the plot
+            ax.text(0.02, 0.98, f'Mean: {np.mean(stats["angular_velocities"]):.3f}\n'
+                                f'Std: {np.std(stats["angular_velocities"]):.3f}\n'
+                                f'Min: {np.min(stats["angular_velocities"]):.3f}\n'
+                                f'Max: {np.max(stats["angular_velocities"]):.3f}',
+                   transform=ax.transAxes, verticalalignment='top',
+                   bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+            
+            # Embed plot in tkinter
+            canvas = FigureCanvasTkAgg(fig, hist_frame)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill='both', expand=True)
+        else:
+            ttk.Label(main_frame, text="No valid angular velocity data found!", 
+                     foreground='red', font=('Arial', 12)).pack(pady=20)
+        
+        # Close button
+        close_button = ttk.Button(main_frame, text="Close", 
+                                 command=popup.destroy, width=15)
+        close_button.pack(pady=10)
     
     def start_visualizer(self):
         # Validate file selection if browse option is selected
@@ -387,165 +1432,18 @@ def calculate_scale_factor(data_manager, sample_size=10):
 
 
 def run(data_file=None, highlight_frames=True, show_augmented=False, inspection_mode=False):
-    # Default to local data file, but allow external file specification
-    if data_file is None:
-        data_file = 'data/run1/out1.txt'
+    """Legacy run function - now uses the new VisualizerWindow"""
+    # Create config from parameters
+    config = {
+        'data_file': data_file or 'data/run1/out1.txt',
+        'inspection_mode': inspection_mode,
+        'augmented_mode': show_augmented,
+        'concatenate_data': False
+    }
     
-    data_manager = DataManager(data_file, 'data/run2/_out.txt', False)
-    
-    # Auto-calculate optimal scale factor based on the data
-    calculate_scale_factor(data_manager)
-    pygame.init()
-    clock = pygame.time.Clock()
-    # Set up the drawing window
-    screen = pygame.display.set_mode([SCREEN_WIDTH, SCREEN_WIDTH])
-    # Set up the font
-    font = pygame.font.Font(None, 32)
-    # FONT = pygame.font.Font(None, 32)
-
-    input_box1 = InputBox(350, 650, 140, 32, font)
-    input_box2 = InputBox(350, 700, 140, 32, font)
-    input_boxes = [input_box1, input_box2]
-    input_box1.add_observer(data_manager)
-
-    running = True
-    paused = False
-    inspect_mode = inspection_mode  # Use the configuration from startup window
-    augmented_mode = show_augmented  # Flag to show augmented (mirrored) data instead of real data
-    distances = []
-
-    while data_manager.has_next():
-        if inspect_mode:
-            paused = True
-        # Did the user click the window close button?
-        for event in pygame.event.get():
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_SPACE:
-                    paused = not paused
-                    # print('PAUSE STATUS: {}'.format(paused))
-                elif event.key == pygame.K_i:
-                    """
-                    Press 'i' keyboard will turn on inspection mode,
-                    which run frame by frame
-                    """
-                    inspect_mode = not inspect_mode
-                    # print('INSPECT MODE: {}'.format(inspect_mode))
-                elif event.key == pygame.K_a:
-                    """
-                    Press 'a' keyboard will toggle augmented data display,
-                    which shows mirrored lidar data for data augmentation
-                    """
-                    augmented_mode = not augmented_mode
-                    print(f'AUGMENTED MODE: {augmented_mode}')
-                elif event.key == pygame.K_q:
-                    running = False
-            elif event.type == pygame.QUIT:
-                # Press 'X' button on window will close the program
-                running = False
-
-            # handle input box event
-            for box in input_boxes:
-                box.handle_event(event)
-
-        if not running:
-            break
-        if data_manager.read_pos < data_manager.pointer:
-            distances = data_manager.dataframe
-        if len(distances) == LIDAR_RESOLUTION + 1:  # One more column, the last column contain TURN value
-            # Fill the background with white
-            screen.fill((250, 250, 250))
-
-            for x in range(LIDAR_RESOLUTION):
-                # depend on the average distance, divide distance with a constant for better view
-                # provide zoom in/out effect using scale_factor
-                try:
-                    distance_value = float(distances[x])
-                    # Skip invalid data points (inf, nan)
-                    if math.isinf(distance_value) or math.isnan(distance_value):
-                        continue  # Skip this data point and move to the next one
-                except (ValueError, TypeError):
-                    # Skip non-numeric values (like 'lidar_0', headers, etc.)
-                    continue
-                a = distance_value * SCALE_FACTOR
-
-                # Choose coordinates based on augmented mode
-                if augmented_mode:
-                    # Augmented data: mirror horizontally (flip Y coordinate for data augmentation)
-                    x_coord = math.cos(x / 180 * math.pi) * a + SCREEN_WIDTH / 2
-                    y_coord = math.sin(x / 180 * math.pi) * a + SCREEN_WIDTH / 2
-                else:
-                    # Real data: use correct coordinate system for Gazebo lidar data
-                    x_coord = math.cos(x / 180 * math.pi) * a + SCREEN_WIDTH / 2
-                    y_coord = -math.sin(x / 180 * math.pi) * a + SCREEN_WIDTH / 2
-
-                if x in DECISIVE_FRAME_POSITIONS and highlight_frames:
-                    # draw line to the point
-                    pygame.draw.line(screen, (255, 0, 255), (SCREEN_WIDTH / 2, SCREEN_WIDTH / 2),
-                                     (x_coord, y_coord), 2)
-
-                    # Draw the important point with RED color
-                    pygame.draw.circle(screen, (255, 0, 0), (x_coord, y_coord), 3)
-                else:
-                    # Draw the ordinary point with BLACK color
-                    pygame.draw.circle(screen, (0, 0, 0), (x_coord, y_coord), 2)
-
-
-            # draw input boxes on screen
-            if not input_box1.active:
-                input_box1.set_text(distances[360])
-            for box in input_boxes:
-                box.update()
-            for box in input_boxes:
-                box.draw(screen)
-
-            # Render the text - handle non-numeric turn values
-            try:
-                turn_value = float(distances[360])
-                # Show different turn value based on mode
-                display_turn = -turn_value if augmented_mode else turn_value
-                mode_text = "AUGMENTED" if augmented_mode else "REAL"
-                text = font.render("line: {}, turn: {:.2f} [{}]".format(
-                    data_manager.read_pos, display_turn, mode_text), True, (0, 255, 255))
-            except (ValueError, TypeError):
-                # Handle non-numeric turn values (like headers)
-                mode_text = "AUGMENTED" if augmented_mode else "REAL"
-                text = font.render("line: {}, turn: {} [{}]".format(
-                    data_manager.read_pos, distances[360], mode_text), True, (0, 255, 255))
-            # Blit the text to the screen
-            screen.blit(text, (350, 600))
-
-            # draw the car
-            pygame.draw.circle(screen, (252, 132, 3), (SCREEN_WIDTH / 2, SCREEN_WIDTH / 2), 12)
-            pygame.draw.line(screen, (0, 0, 255), (SCREEN_WIDTH / 2, SCREEN_WIDTH / 2),
-                             (SCREEN_WIDTH / 2 + 40, SCREEN_WIDTH / 2), 3)
-            # Use convention: Full LEFT/RIGHT TURN = 45 degree (Pi/4)
-            try:
-                turn_value = float(distances[360])
-                # Flip turn value for augmented data (mirror steering)
-                if augmented_mode:
-                    turn_value = -turn_value
-                x = math.cos(turn_value * math.pi / 4) * 40
-                y = math.sin(turn_value * math.pi / 4) * 40
-                pygame.draw.line(screen, (0, 255, 0), (SCREEN_WIDTH / 2, SCREEN_WIDTH / 2),
-                                 (SCREEN_WIDTH / 2 + x, SCREEN_WIDTH / 2 + y), 3)
-            except (ValueError, TypeError):
-                # Skip drawing turn direction for non-numeric values
-                pass
-            # Flip the display - swaps back buffer to front buffer to make all drawings visible
-            # This is standard pygame double buffering, not related to data orientation
-            pygame.display.flip()
-            clock.tick(10)
-
-            if not paused:  # Moving to the next lidar scan cycle
-                print('Not Paused')
-                # write current line to file
-                data_manager.write_line()
-                # move to the next lidar data frame
-                data_manager.next()
-                # reset input value
-                input_box1.value = ''
-
-    pygame.quit()
+    # Create and run the new visualizer window
+    visualizer = VisualizerWindow(config)
+    visualizer.run()
 
 
 def console_config(preset_data_file=None):
@@ -637,46 +1535,28 @@ if __name__ == '__main__':
     except:
         display_available = False
     
-    # Try GUI first if display is available
+    # Create default configuration
+    default_data_file = preset_data_file if preset_data_file else 'data/run1/out1.txt'
+    config = {
+        'data_file': default_data_file,
+        'inspection_mode': False,
+        'augmented_mode': False,
+        'concatenate_data': False
+    }
+    
+    print(f"Starting Lidar Visualizer with:")
+    print(f"  Data file: {config['data_file']}")
+    print(f"  Inspection mode: {config['inspection_mode']}")
+    print(f"  Augmented mode: {config['augmented_mode']}")
+    print(f"  Data concatenated: {config['concatenate_data']}")
+    
     if display_available:
         try:
-            print("Initializing configuration window...")
-            # Show startup configuration window (with preset data file if provided)
-            config_window = StartupConfigWindow(preset_data_file)
-            print("Configuration window created, waiting for user input...")
-            
-            # Check if window actually got created and is visible
-            import time
-            time.sleep(0.5)  # Give window time to appear
-            
-            config = config_window.get_config()
-            
-            if config is None:
-                print("Configuration cancelled or window closed. Using console fallback...")
-                raise Exception("GUI configuration failed")
-            
-            # Process concatenation if requested
-            if config['concatenate_data']:
-                success = concatenate_augmented_data(config['data_file'])
-                if not success:
-                    print("Failed to concatenate data. Exiting...")
-                    sys.exit(1)
-            
-            # Start visualizer with selected configuration
-            print(f"Starting visualizer with configuration:")
-            print(f"  Data file: {config['data_file']}")
-            print(f"  Inspection mode: {config['inspection_mode']}")
-            print(f"  Augmented mode: {config['augmented_mode']}")
-            print(f"  Data concatenated: {config['concatenate_data']}")
-            
-            run(
-                data_file=config['data_file'],
-                highlight_frames=True,
-                show_augmented=config['augmented_mode'],
-                inspection_mode=config['inspection_mode']
-            )
+            # Create and run the visualizer window directly
+            visualizer = VisualizerWindow(config)
+            visualizer.run()
         except Exception as e:
-            print(f"Error with configuration window: {e}")
+            print(f"Error with visualizer window: {e}")
             display_available = False
     
     # Use console fallback if GUI failed or no display
@@ -685,14 +1565,10 @@ if __name__ == '__main__':
         # Console-based fallback configuration with preset data file
         config = console_config(preset_data_file)
         if config:
-            run(
-                data_file=config['data_file'],
-                highlight_frames=True,
-                show_augmented=config['augmented_mode'],
-                inspection_mode=config['inspection_mode']
-            )
+            # Create and run the visualizer window
+            visualizer = VisualizerWindow(config)
+            visualizer.run()
         else:
-            # Use command line argument or default
-            data_file = preset_data_file if preset_data_file else 'data/run1/out1.txt'
-            print(f"Using default configuration with data file: {data_file}")
-            run(data_file, True)
+            print(f"Using default configuration with data file: {default_data_file}")
+            visualizer = VisualizerWindow(config)
+            visualizer.run()
