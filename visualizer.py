@@ -34,6 +34,10 @@ class VisualizerWindow:
         self.inspect_mode = False  # Start in continuous mode by default (not inspection mode)
         self.augmented_mode = config['augmented_mode']
         
+        # Direction ratio configuration (angular velocity to degree mapping)
+        self.direction_ratio_max_degree = 45.0  # Maximum degrees for visualization
+        self.direction_ratio_max_angular = 1.0  # Angular velocity value that maps to max degree
+        
         # Initialize data manager
         self.data_manager = DataManager(config['data_file'], 'data/run2/_out.txt', False)
         calculate_scale_factor(self.data_manager)
@@ -139,7 +143,7 @@ class VisualizerWindow:
         controls_panel = ttk.LabelFrame(main_frame, text="Controls", padding=5)
         controls_panel.pack(fill='x', pady=(0, 5))
         
-        # Create horizontal button layout
+        # Create horizontal button layout - First row
         button_frame = ttk.Frame(controls_panel)
         button_frame.pack(fill='x')
         
@@ -167,11 +171,29 @@ class VisualizerWindow:
         ttk.Button(button_frame, text="Quit", 
                   command=self.quit_visualizer, width=12).pack(side='left', padx=(0, 5))
         
-        # Keyboard shortcuts info - more compact, on the right side
-        shortcuts_label = ttk.Label(button_frame, 
-                                   text="💡 Shortcuts: Space=Play/Next | I=Mode | A=Augmented | Q=Quit | ←→=Prev/Next | Home/End=First/Last", 
-                                   font=('Arial', 8), foreground='navy')
-        shortcuts_label.pack(side='right', padx=(10, 0))
+        # Create second button frame for modified frames navigation - Second row
+        self.modified_button_frame = ttk.Frame(controls_panel)
+        self.modified_button_frame.pack(fill='x', pady=(5, 0))
+        
+        # Modified frames navigation buttons (initially hidden)
+        self.first_modified_button = ttk.Button(self.modified_button_frame, text="⏮ First Mod", 
+                                              command=self.first_modified_frame, width=12)
+        self.prev_modified_button = ttk.Button(self.modified_button_frame, text="◀ Prev Mod", 
+                                             command=self.prev_modified_frame, width=12)
+        self.next_modified_button = ttk.Button(self.modified_button_frame, text="Next Mod ▶", 
+                                             command=self.next_modified_frame, width=12)
+        self.last_modified_button = ttk.Button(self.modified_button_frame, text="Last Mod ⏭", 
+                                             command=self.last_modified_frame, width=12)
+        
+        # Keyboard shortcuts info - separate frame with wrapping
+        shortcuts_frame = ttk.Frame(controls_panel)
+        shortcuts_frame.pack(fill='x', pady=(5, 0))
+        
+        shortcuts_label = ttk.Label(shortcuts_frame, 
+                                   text="💡 Shortcuts: Space=Play/Next | I=Mode | A=Augmented | Q=Quit | ←→=Prev/Next | Home/End=First/Last | ↑↓=Prev/Next Modified | PgUp/PgDn=First/Last Modified", 
+                                   font=('Arial', 8), foreground='navy', justify='left', 
+                                   wraplength=800)  # Allow text to wrap at 800 pixels
+        shortcuts_label.pack(anchor='w')
         
         # Status display - make it more compact
         status_frame = ttk.LabelFrame(main_frame, text="Status", padding=3)
@@ -180,7 +202,7 @@ class VisualizerWindow:
         self.status_var = tk.StringVar()
         self.status_var.set(f"Data: {os.path.basename(self.config['data_file'])} | Mode: {'INSPECT' if self.inspect_mode else 'CONTINUOUS'} | Data: {'AUGMENTED' if self.augmented_mode else 'REAL'}")
         ttk.Label(status_frame, textvariable=self.status_var, 
-                 font=('Courier', 9)).pack()
+                 font=('Courier', 9), wraplength=800).pack()
         
         # Create horizontal layout for main content
         content_frame = ttk.Frame(main_frame)
@@ -208,8 +230,15 @@ class VisualizerWindow:
         self.frame_info_var = tk.StringVar()
         self.frame_info_var.set("Frame: -- [--]")
         frame_info_label = ttk.Label(input_panel, textvariable=self.frame_info_var, 
-                                    font=('Courier', 8), foreground='blue')
-        frame_info_label.pack(pady=(0, 5), fill='x')
+                                    font=('Courier', 8), foreground='blue', wraplength=200)
+        frame_info_label.pack(pady=(0, 2), fill='x')
+        
+        # Modified frames info below main frame info
+        self.modified_info_var = tk.StringVar()
+        self.modified_info_var.set("Modified: 0 frames")
+        modified_info_label = ttk.Label(input_panel, textvariable=self.modified_info_var, 
+                                       font=('Courier', 8), foreground='purple', wraplength=200)
+        modified_info_label.pack(pady=(0, 5), fill='x')
         
         # Instructions for angular velocity
         ttk.Label(input_panel, text="📝 Press Enter to update", 
@@ -282,6 +311,7 @@ class VisualizerWindow:
         visual_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Visual", menu=visual_menu)
         visual_menu.add_command(label="Scale Factor...", command=self.show_scale_factor_dialog)
+        visual_menu.add_command(label="Direction Ratio...", command=self.show_direction_ratio_dialog)
         
         # Bind keyboard shortcuts
         self.root.bind_all("<Control-o>", lambda e: self.browse_data_file())
@@ -290,6 +320,16 @@ class VisualizerWindow:
     
     def on_key_press(self, event):
         """Handle keyboard events"""
+        # Check if angular velocity text field is focused - if so, ignore navigation keys
+        if self.turn_entry.focus_get() == self.turn_entry:
+            # Angular velocity field is focused, only allow non-navigation keys
+            if event.keysym.lower() in ['i', 'a', 'q']:
+                # Allow mode toggles and quit even when text field is focused
+                pass
+            else:
+                # Ignore all other keys including arrow keys when text field is focused  
+                return
+        
         if event.keysym == 'space':
             if self.inspect_mode:
                 # In inspect mode, space advances to next frame
@@ -315,6 +355,19 @@ class VisualizerWindow:
         elif event.keysym == 'End' and self.inspect_mode:
             # End key for last frame in inspect mode
             self.last_frame()
+        # Modified frame navigation shortcuts (with Shift modifier)
+        elif event.keysym == 'Up' and self.inspect_mode:
+            # Shift+Up arrow for previous modified frame
+            self.prev_modified_frame()
+        elif event.keysym == 'Down' and self.inspect_mode:
+            # Shift+Down arrow for next modified frame
+            self.next_modified_frame()
+        elif event.keysym == 'Prior' and self.inspect_mode:  # Page Up
+            # Page Up for first modified frame
+            self.first_modified_frame()
+        elif event.keysym == 'Next' and self.inspect_mode:   # Page Down
+            # Page Down for last modified frame
+            self.last_modified_frame()
     
     def prev_frame(self):
         """Move to previous frame in inspect mode"""
@@ -388,6 +441,71 @@ class VisualizerWindow:
         """Advance to next frame in inspect mode (legacy method - now uses next_frame)"""
         self.next_frame()
     
+    # Modified frames navigation methods
+    def first_modified_frame(self):
+        """Jump to first modified frame"""
+        if self.inspect_mode and self.data_manager.modified_frames:
+            self.data_manager.first_modified()
+            
+            # Update display
+            self.distances = self.data_manager.dataframe
+            if len(self.distances) == LIDAR_RESOLUTION + 1:
+                self.render_frame()
+                self.update_inputs()
+            
+            # Update button states after moving
+            self.update_button_states()
+            
+            print(f"Jumped to first modified frame: {self.data_manager.get_modified_position_info()}")
+    
+    def prev_modified_frame(self):
+        """Navigate to previous modified frame"""
+        if self.inspect_mode and self.data_manager.has_prev_modified():
+            self.data_manager.prev_modified()
+            
+            # Update display
+            self.distances = self.data_manager.dataframe
+            if len(self.distances) == LIDAR_RESOLUTION + 1:
+                self.render_frame()
+                self.update_inputs()
+            
+            # Update button states after moving
+            self.update_button_states()
+            
+            print(f"Previous modified frame: {self.data_manager.get_modified_position_info()}")
+    
+    def next_modified_frame(self):
+        """Navigate to next modified frame"""
+        if self.inspect_mode and self.data_manager.has_next_modified():
+            self.data_manager.next_modified()
+            
+            # Update display
+            self.distances = self.data_manager.dataframe
+            if len(self.distances) == LIDAR_RESOLUTION + 1:
+                self.render_frame()
+                self.update_inputs()
+            
+            # Update button states after moving
+            self.update_button_states()
+            
+            print(f"Next modified frame: {self.data_manager.get_modified_position_info()}")
+    
+    def last_modified_frame(self):
+        """Jump to last modified frame"""
+        if self.inspect_mode and self.data_manager.modified_frames:
+            self.data_manager.last_modified()
+            
+            # Update display
+            self.distances = self.data_manager.dataframe
+            if len(self.distances) == LIDAR_RESOLUTION + 1:
+                self.render_frame()
+                self.update_inputs()
+            
+            # Update button states after moving
+            self.update_button_states()
+            
+            print(f"Jumped to last modified frame: {self.data_manager.get_modified_position_info()}")
+    
     def toggle_pause(self):
         """Toggle pause state"""
         self.paused = not self.paused
@@ -423,6 +541,36 @@ class VisualizerWindow:
             self.next_button.pack(side='left', padx=(0, 2), before=self.mode_button)
             self.last_button.pack(side='left', padx=(0, 5), before=self.mode_button)
             
+            # Always show modified frame navigation buttons in inspection mode
+            self.modified_button_frame.pack(fill='x', pady=(5, 0))
+            self.first_modified_button.pack(side='left', padx=(0, 2))
+            self.prev_modified_button.pack(side='left', padx=(0, 2))
+            self.next_modified_button.pack(side='left', padx=(0, 2))
+            self.last_modified_button.pack(side='left', padx=(0, 5))
+            
+            # Update modified navigation button states based on whether modified frames exist
+            if self.data_manager.modified_frames:
+                # Enable buttons and update states based on navigation position
+                if not self.data_manager.has_prev_modified():
+                    self.prev_modified_button.config(state='disabled')
+                    self.first_modified_button.config(state='disabled')
+                else:
+                    self.prev_modified_button.config(state='normal')
+                    self.first_modified_button.config(state='normal')
+                    
+                if not self.data_manager.has_next_modified():
+                    self.next_modified_button.config(state='disabled')
+                    self.last_modified_button.config(state='disabled')
+                else:
+                    self.next_modified_button.config(state='normal')
+                    self.last_modified_button.config(state='normal')
+            else:
+                # Disable all modified frame buttons if no modified frames exist
+                self.first_modified_button.config(state='disabled')
+                self.prev_modified_button.config(state='disabled')
+                self.next_modified_button.config(state='disabled')
+                self.last_modified_button.config(state='disabled')
+            
             # Update navigation button states based on position
             if not self.data_manager.has_prev():
                 self.prev_button.config(state='disabled')
@@ -443,6 +591,10 @@ class VisualizerWindow:
             self.prev_button.pack_forget()
             self.next_button.pack_forget()
             self.last_button.pack_forget()
+            
+            # Hide modified frame buttons in continuous mode
+            self.modified_button_frame.pack_forget()
+            
             self.play_pause_button.pack(side='left', padx=(0, 5), before=self.mode_button)
             
             # Update play/pause button
@@ -722,20 +874,23 @@ Total Invalid Data Points: {current_stats['total_invalid_count']}
 Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
             
             # Show regular stats
-            ttk.Label(self.stats_display_frame, text=stats_text, font=('Courier', 10)).pack(anchor='w')
+            ttk.Label(self.stats_display_frame, text=stats_text, font=('Courier', 10), 
+                     wraplength=400, justify='left').pack(anchor='w')
             
             if 'augmented_count' in current_stats and current_stats['augmented_count'] > 0:
                 # Show augmented count in blue
                 augmented_label = ttk.Label(self.stats_display_frame, 
                                         text=f"Augmented Data Frames: {current_stats['augmented_count']}", 
-                                        font=('Courier', 10), foreground='blue')
+                                        font=('Courier', 10), foreground='blue',
+                                        wraplength=400, justify='left')
                 augmented_label.pack(anchor='w')
             
             if 'imputed_count' in current_stats and current_stats['imputed_count'] > 0:
                 # Show imputed count in green
                 imputed_label = ttk.Label(self.stats_display_frame, 
                                         text=f"Imputed Data Points: {current_stats['imputed_count']}", 
-                                        font=('Courier', 10), foreground='green')
+                                        font=('Courier', 10), foreground='green',
+                                        wraplength=400, justify='left')
                 imputed_label.pack(anchor='w')
         
         # Initial stats display
@@ -1014,7 +1169,8 @@ Total Invalid Data Points: {current_stats['total_invalid_count']}
 Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
                     
                     # Show regular stats
-                    ttk.Label(self.stats_display_frame, text=stats_text, font=('Courier', 10)).pack(anchor='w')
+                    ttk.Label(self.stats_display_frame, text=stats_text, font=('Courier', 10),
+                             wraplength=400, justify='left').pack(anchor='w')
                     
                     # Show mode-specific information
                     if 'append_mode' in current_stats:
@@ -1025,21 +1181,24 @@ Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
                         
                         mode_label = ttk.Label(self.stats_display_frame, 
                                             text=mode_text, 
-                                            font=('Courier', 10), foreground='purple')
+                                            font=('Courier', 10), foreground='purple',
+                                            wraplength=400, justify='left')
                         mode_label.pack(anchor='w')
                     
                     if 'augmented_count' in current_stats and current_stats['augmented_count'] > 0:
                         # Show augmented count in blue
                         augmented_label = ttk.Label(self.stats_display_frame, 
                                                 text=f"Augmented Data Frames: {current_stats['augmented_count']}", 
-                                                font=('Courier', 10), foreground='blue')
+                                                font=('Courier', 10), foreground='blue',
+                                                wraplength=400, justify='left')
                         augmented_label.pack(anchor='w')
                     
                     if 'imputed_count' in current_stats and current_stats['imputed_count'] > 0:
                         # Show imputed count in green
                         imputed_label = ttk.Label(self.stats_display_frame, 
                                                 text=f"Imputed Data Points: {current_stats['imputed_count']}", 
-                                                font=('Courier', 10), foreground='green')
+                                                font=('Courier', 10), foreground='green',
+                                                wraplength=400, justify='left')
                         imputed_label.pack(anchor='w')
                 
                 update_stats_display_with_augmented(new_stats)
@@ -1436,6 +1595,112 @@ Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
         scale_entry.bind('<Return>', lambda e: apply_scale_factor())
         popup.bind('<Escape>', lambda e: cancel_dialog())
     
+    def show_direction_ratio_dialog(self):
+        """Show dialog to configure direction ratio (angular velocity to degree mapping)"""
+        popup = tk.Toplevel(self.root)
+        popup.title("Direction Ratio Configuration")
+        popup.geometry("400x250")
+        popup.resizable(False, False)
+        
+        # Center the popup
+        popup.transient(self.root)
+        popup.grab_set()
+        
+        # Calculate center position
+        popup.update_idletasks()
+        x = (popup.winfo_screenwidth() // 2) - (400 // 2)
+        y = (popup.winfo_screenheight() // 2) - (250 // 2)
+        popup.geometry(f"400x250+{x}+{y}")
+        
+        main_frame = ttk.Frame(popup, padding=20)
+        main_frame.pack(fill='both', expand=True)
+        
+        # Title
+        title_label = ttk.Label(main_frame, text="Direction Ratio Configuration", 
+                               font=('Arial', 12, 'bold'))
+        title_label.pack(pady=(0, 15))
+        
+        # Description
+        desc_label = ttk.Label(main_frame, 
+                              text="Configure how angular velocity values map to direction visualization degrees.",
+                              font=('Arial', 9), wraplength=350, justify='center')
+        desc_label.pack(pady=(0, 20))
+        
+        # Direction (degree) input
+        degree_frame = ttk.Frame(main_frame)
+        degree_frame.pack(fill='x', pady=(0, 10))
+        
+        ttk.Label(degree_frame, text="Maximum Direction (degrees):", 
+                 font=('Arial', 10)).pack(anchor='w')
+        degree_var = tk.StringVar(value=str(self.direction_ratio_max_degree))
+        degree_entry = ttk.Entry(degree_frame, textvariable=degree_var, 
+                                font=('Courier', 10), width=15)
+        degree_entry.pack(anchor='w', pady=(5, 0))
+        degree_entry.focus_set()
+        
+        # Angular velocity max input
+        angular_frame = ttk.Frame(main_frame)
+        angular_frame.pack(fill='x', pady=(0, 20))
+        
+        ttk.Label(angular_frame, text="Angular Velocity Max:", 
+                 font=('Arial', 10)).pack(anchor='w')
+        angular_var = tk.StringVar(value=str(self.direction_ratio_max_angular))
+        angular_entry = ttk.Entry(angular_frame, textvariable=angular_var, 
+                                 font=('Courier', 10), width=15)
+        angular_entry.pack(anchor='w', pady=(5, 0))
+        
+        # Current mapping info
+        info_text = f"Current: Angular velocity {self.direction_ratio_max_angular} → {self.direction_ratio_max_degree}°"
+        info_label = ttk.Label(main_frame, text=info_text, 
+                              font=('Arial', 8), foreground='blue')
+        info_label.pack(pady=(0, 15))
+        
+        # Button frame
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(pady=(10, 0))
+        
+        def apply_direction_ratio():
+            """Apply the new direction ratio settings"""
+            try:
+                new_degree = float(degree_var.get())
+                new_angular = float(angular_var.get())
+                
+                if new_degree <= 0 or new_degree > 180:
+                    messagebox.showerror("Invalid Value", 
+                                       "Direction must be between 0 and 180 degrees")
+                    return
+                
+                if new_angular <= 0:
+                    messagebox.showerror("Invalid Value", 
+                                       "Angular velocity max must be greater than 0")
+                    return
+                
+                # Update the configuration
+                self.direction_ratio_max_degree = new_degree
+                self.direction_ratio_max_angular = new_angular
+                
+                print(f"Direction ratio updated: {new_angular} → {new_degree}°")
+                popup.destroy()
+                
+            except ValueError:
+                messagebox.showerror("Invalid Value", 
+                                   "Please enter valid numeric values for both fields")
+        
+        def cancel_dialog():
+            """Cancel the dialog"""
+            popup.destroy()
+        
+        # OK and Cancel buttons
+        ttk.Button(button_frame, text="OK", command=apply_direction_ratio, 
+                  width=10).pack(side='left', padx=(0, 10))
+        ttk.Button(button_frame, text="Cancel", command=cancel_dialog, 
+                  width=10).pack(side='left')
+        
+        # Bind Enter key to apply changes
+        degree_entry.bind('<Return>', lambda e: apply_direction_ratio())
+        angular_entry.bind('<Return>', lambda e: apply_direction_ratio())
+        popup.bind('<Escape>', lambda e: cancel_dialog())
+
     def quit_visualizer(self):
         """Quit the visualizer"""
         print("Quitting visualizer...")
@@ -1513,15 +1778,31 @@ Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
                     if self.data_manager.read_pos < len(self.data_manager.lines):
                         self.data_manager.lines[self.data_manager.read_pos] = line_str
                     
+                    # Manually trigger modified frames tracking
+                    current_frame = self.data_manager.pointer
+                    if current_frame not in self.data_manager._modified_frames:
+                        self.data_manager._modified_frames.append(current_frame)
+                        self.data_manager._modified_frames.sort()  # Keep the list sorted
+                        # Update the modified pointer to point to the current frame
+                        self.data_manager._modified_pointer = self.data_manager._modified_frames.index(current_frame)
+                        print(f"Frame {current_frame} added to modified frames list")
+                    
                     print(f"Data manager updated with new turn value: {new_turn} at frame {self.data_manager.read_pos + 1}")
                 
-                # Clear the input field after successful update (like original pygame behavior)
-                self.turn_var.set('')
+                # Don't clear the input field - keep the value for user reference
+                # self.turn_var.set('')  # Removed: Keep the entered value
                 print(f"Angular velocity updated to: {new_turn}")
                 
-                # Update button states in case we're at boundaries
+                # Immediately update the visualization
+                self.render_frame()
+                self.update_inputs()  # Update other UI elements
+                
+                # Update button states in case we're at boundaries or modified frames list changed
                 if self.inspect_mode:
                     self.update_button_states()
+                
+                # Remove focus from text field so keyboard navigation works immediately
+                self.root.focus_set()  # Transfer focus to the main window
             else:
                 print("No valid data frame to update")
                 
@@ -1552,6 +1833,18 @@ Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
             current_frame = self.data_manager.pointer + 1  # Add 1 for 1-based indexing (pointer is 0-based)
             total_frames = len(self.data_manager.lines)
             self.frame_info_var.set(f"Frame: {current_frame}/{total_frames} [{mode_text}]")
+            
+            # Update modified frames information display
+            total_modified = len(self.data_manager.modified_frames)
+            if total_modified > 0:
+                # If current frame is in modified frames list, show position in that list
+                if self.data_manager.pointer in self.data_manager.modified_frames:
+                    current_modified_pos = self.data_manager.modified_frames.index(self.data_manager.pointer) + 1
+                    self.modified_info_var.set(f"Modified: {current_modified_pos}/{total_modified} [Frame #{self.data_manager.pointer + 1}]")
+                else:
+                    self.modified_info_var.set(f"Modified: {total_modified} frames total")
+            else:
+                self.modified_info_var.set("Modified: 0 frames")
             
             # Update linear velocity field (placeholder - keep empty for now)
             if not self.linear_entry.focus_get() == self.linear_entry:
@@ -1608,13 +1901,20 @@ Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
             pygame.draw.line(self.screen, (0, 0, 255), (center_x, center_y),
                             (center_x + car_line_length, center_y), 3)
             
-            # Draw turn direction (scaled)
+            # Draw turn direction (scaled with configurable direction ratio)
             try:
                 turn_value = float(self.distances[360])
                 if self.augmented_mode:
                     turn_value = -turn_value
-                x = math.cos(turn_value * math.pi / 4) * car_line_length
-                y = math.sin(turn_value * math.pi / 4) * car_line_length
+                
+                # Apply configurable direction ratio mapping
+                # Convert angular velocity to degrees using the configured mapping
+                angle_degrees = (turn_value / self.direction_ratio_max_angular) * self.direction_ratio_max_degree
+                # Convert degrees to radians for math functions
+                angle_radians = angle_degrees * math.pi / 180
+                
+                x = math.cos(angle_radians) * car_line_length
+                y = math.sin(angle_radians) * car_line_length
                 # Flip Y coordinate to match lidar coordinate system (pygame Y increases downward)
                 pygame.draw.line(self.screen, (0, 255, 0), (center_x, center_y),
                                (center_x + x, center_y - y), 3)
@@ -2060,7 +2360,8 @@ Frames with Invalid Data: {stats['frames_with_invalid']} ({stats['frames_with_in
 Total Invalid Data Points: {stats['total_invalid_count']}
 Valid Angular Velocity Values: {len(stats['angular_velocities'])}"""
         
-        ttk.Label(stats_frame, text=stats_text, font=('Courier', 10)).pack(anchor='w')
+        ttk.Label(stats_frame, text=stats_text, font=('Courier', 10),
+                 wraplength=600, justify='left').pack(anchor='w')
         
         # Histogram
         if stats['angular_velocities']:

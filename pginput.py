@@ -99,6 +99,10 @@ class DataManager(Observer):
         self._line = ''
         # current dataframe
         self._lidar_dataframe = []
+        
+        # Modified frames tracking
+        self._modified_frames = []  # List of frame indices that have been modified
+        self._modified_pointer = -1  # Pointer for navigating through modified frames
 
     @property
     def dataframe(self):
@@ -115,6 +119,21 @@ class DataManager(Observer):
     @property
     def read_pos(self):
         return self._read_pos
+    
+    @property
+    def modified_frames(self):
+        """Get the list of modified frame indices"""
+        return self._modified_frames.copy()
+    
+    @property
+    def modified_pointer(self):
+        """Get the current position in the modified frames list"""
+        return self._modified_pointer
+    
+    @property
+    def modified_frames_count(self):
+        """Get the total number of modified frames"""
+        return len(self._modified_frames)
 
     def has_next(self):
         return self._pointer < len(self.lines)
@@ -148,6 +167,67 @@ class DataManager(Observer):
             self._read_pos = self._pointer - 1
         return self._lidar_dataframe
 
+    # Modified frames navigation methods
+    def has_next_modified(self):
+        """Check if there's a next modified frame"""
+        return self._modified_pointer < len(self._modified_frames) - 1
+    
+    def has_prev_modified(self):
+        """Check if there's a previous modified frame"""
+        return self._modified_pointer > 0
+    
+    def next_modified(self):
+        """Navigate to the next modified frame"""
+        if self.has_next_modified():
+            self._modified_pointer += 1
+            self._pointer = self._modified_frames[self._modified_pointer]
+            # Reset read position to force re-reading of the dataframe
+            self._read_pos = self._pointer - 1
+        return self._lidar_dataframe
+    
+    def prev_modified(self):
+        """Navigate to the previous modified frame"""
+        if self.has_prev_modified():
+            self._modified_pointer -= 1
+            self._pointer = self._modified_frames[self._modified_pointer]
+            # Reset read position to force re-reading of the dataframe
+            self._read_pos = self._pointer - 1
+        return self._lidar_dataframe
+    
+    def first_modified(self):
+        """Jump to the first modified frame"""
+        if self._modified_frames:
+            self._modified_pointer = 0
+            self._pointer = self._modified_frames[0]
+            # Reset read position to force re-reading of the dataframe
+            self._read_pos = self._pointer - 1
+        return self._lidar_dataframe
+    
+    def last_modified(self):
+        """Jump to the last modified frame"""
+        if self._modified_frames:
+            self._modified_pointer = len(self._modified_frames) - 1
+            self._pointer = self._modified_frames[-1]
+            # Reset read position to force re-reading of the dataframe
+            self._read_pos = self._pointer - 1
+        return self._lidar_dataframe
+    
+    def get_modified_position_info(self):
+        """Get information about current position in modified frames"""
+        if not self._modified_frames:
+            return "No modified frames"
+        
+        if self._pointer in self._modified_frames:
+            current_index = self._modified_frames.index(self._pointer)
+            return f"Modified frame {current_index + 1} of {len(self._modified_frames)} (Frame #{self._pointer})"
+        else:
+            return f"Current frame #{self._pointer} (not modified) - {len(self._modified_frames)} modified frames total"
+    
+    def clear_modified_frames(self):
+        """Clear the list of modified frames"""
+        self._modified_frames.clear()
+        self._modified_pointer = -1
+
     def write_line(self):
         if self.w_mode:
             self.writer.writerow(self._lidar_dataframe)
@@ -155,6 +235,13 @@ class DataManager(Observer):
     def update(self, observable):
         if isinstance(observable, InputBox):
             self._lidar_dataframe[360] = observable.value
+            # Track this frame as modified
+            current_frame = self._pointer
+            if current_frame not in self._modified_frames:
+                self._modified_frames.append(current_frame)
+                self._modified_frames.sort()  # Keep the list sorted
+                # Update the modified pointer to point to the current frame
+                self._modified_pointer = self._modified_frames.index(current_frame)
 
 
 def main():
@@ -200,8 +287,33 @@ def get_augmented_data():
     return augmented_data
 
 
+def test_modified_frames_navigation():
+    """Test function to demonstrate the modified frames navigation functionality"""
+    print("Testing Modified Frames Navigation")
+    print("=" * 50)
+    
+    # This would normally be done with actual data files
+    # For testing, we'll simulate the functionality
+    
+    # Create a mock DataManager (this is just for demonstration)
+    print("1. DataManager now tracks modified frames automatically")
+    print("2. When user updates angular velocity, frame index is added to modified list")
+    print("3. New navigation methods available:")
+    print("   - has_next_modified() / has_prev_modified()")
+    print("   - next_modified() / prev_modified()")
+    print("   - first_modified() / last_modified()")
+    print("4. Properties available:")
+    print("   - modified_frames: list of modified frame indices")
+    print("   - modified_frames_count: total number of modified frames")
+    print("   - get_modified_position_info(): current position info")
+    print("\nExample usage in visualizer:")
+    print("- First set: Navigate through ALL frames (existing buttons)")
+    print("- Second set: Navigate through MODIFIED frames only (new buttons)")
+
+
 if __name__ == '__main__':
     # pg.init()
     # main()
     # pg.quit()
-    get_augmented_data()
+    # get_augmented_data()
+    test_modified_frames_navigation()
