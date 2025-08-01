@@ -5,7 +5,7 @@ from io import StringIO
 selected_feature_indices = [24, 29, 31, 35, 38, 39, 40, 41, 42, 43, 44, 45, 47, 50, 54, 55, 57, 302,
                             304, 312, 314, 315, 316, 318, 319, 321, 324, 326, 328, 330]
 
-filename = 'self_driving_model_0.1.pkl'
+filename = 'self_driving_model_0.2.pkl'
 # Load the model from disk
 with open(filename, 'rb') as file:
     model = pickle.load(file)
