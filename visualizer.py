@@ -31,12 +31,24 @@ class VisualizerWindow:
         self.config = config
         self.running = True
         self.paused = True  # Start paused by default
-        self.inspect_mode = False  # Start in continuous mode by default (not inspection mode)
+        self.inspect_mode = True  # Start in inspection mode by default
         self.augmented_mode = config['augmented_mode']
         
         # Direction ratio configuration (angular velocity to degree mapping)
         self.direction_ratio_max_degree = 45.0  # Maximum degrees for visualization
         self.direction_ratio_max_angular = 1.0  # Angular velocity value that maps to max degree
+        
+        # Previous frame angular velocity for comparison
+        self.prev_angular_velocity = 0.0
+        
+        # Undo functionality
+        self.undo_stack = []  # Stack to track changes for undo: [(frame_index, old_value, new_value), ...]
+        self.max_undo_steps = 20  # Maximum number of undo steps to keep
+        
+        # Recent files management
+        self.recent_files = []
+        self.max_recent_files = 5
+        self.recent_files_path = "visualizer_recent_files.txt"
         
         # Initialize data manager
         self.data_manager = DataManager(config['data_file'], 'data/run2/_out.txt', False)
@@ -64,6 +76,9 @@ class VisualizerWindow:
         # Setup UI first
         self.setup_ui()
         
+        # Load recent files
+        self.load_recent_files()
+        
         # Initialize pygame after UI setup
         self.init_pygame()
         
@@ -72,6 +87,12 @@ class VisualizerWindow:
         
         # Update button states after everything is set up
         self.update_button_states()
+        
+        # Add current file to recent files
+        self.add_recent_file(config['data_file'])
+        
+        # Update recent files menu
+        self.update_recent_files_menu()
         
         # Bind window close event
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -205,7 +226,7 @@ class VisualizerWindow:
         shortcuts_frame.pack(fill='x', pady=(5, 0))
         
         shortcuts_label = ttk.Label(shortcuts_frame, 
-                                   text="💡 Shortcuts: Space=Play/Next | I=Mode | A=Augmented | Q=Quit | ←→=Prev/Next | Home/End=First/Last | ↑↓=Prev/Next Modified | PgUp/PgDn=First/Last Modified", 
+                                   text="💡 Shortcuts: Space=Play/Next | I=Mode | A=Augmented | Q=Quit | R=Replace | U=Undo | ←→=Prev/Next | Home/End=First/Last | ↑↓=Prev/Next Modified | PgUp/PgDn=First/Last Modified", 
                                    font=('Arial', 8), foreground='navy', justify='left', 
                                    wraplength=800)  # Allow text to wrap at 800 pixels
         shortcuts_label.pack(anchor='w')
@@ -233,13 +254,32 @@ class VisualizerWindow:
         input_panel.pack(fill='both', expand=True)
         
         # Angular velocity input
-        ttk.Label(input_panel, text="Angular Velocity:", 
+        ttk.Label(input_panel, text="Angular Vel:", 
                  font=('Arial', 9, 'bold'), foreground='darkblue').pack(anchor='w', pady=(0, 2))
         
         self.turn_var = tk.StringVar()
         self.turn_entry = ttk.Entry(input_panel, textvariable=self.turn_var, 
                                    width=18, font=('Courier', 9))
         self.turn_entry.pack(pady=(0, 5), fill='x')
+        
+        # Previous Angular velocity input
+        ttk.Label(input_panel, text="Prev Angular Vel:", 
+                 font=('Arial', 9, 'bold'), foreground='darkred').pack(anchor='w', pady=(0, 2))
+        
+        self.prev_turn_var = tk.StringVar()
+        self.prev_turn_entry = ttk.Entry(input_panel, textvariable=self.prev_turn_var, 
+                                        width=18, font=('Courier', 9), state='readonly')
+        self.prev_turn_entry.pack(pady=(0, 3), fill='x')
+        
+        # Replace button
+        self.replace_button = ttk.Button(input_panel, text="Replace (R)", 
+                                        command=self.replace_with_previous, width=18)
+        self.replace_button.pack(pady=(0, 3), fill='x')
+        
+        # Undo instruction for replace
+        ttk.Label(input_panel, text="💡 Press U for undo", 
+                 font=('Arial', 7), foreground='darkgreen', 
+                 wraplength=140).pack(anchor='w', pady=(0, 5), fill='x')
         
         # Status info below angular velocity input
         self.frame_info_var = tk.StringVar()
@@ -256,12 +296,12 @@ class VisualizerWindow:
         modified_info_label.pack(pady=(0, 5), fill='x')
         
         # Instructions for angular velocity
-        ttk.Label(input_panel, text="📝 Press Enter to update", 
+        ttk.Label(input_panel, text="📝 Enter to update | R to replace | U to undo", 
                  font=('Arial', 7), foreground='darkgreen', 
                  wraplength=140).pack(anchor='w', pady=(0, 8), fill='x')
         
         # Linear velocity input
-        ttk.Label(input_panel, text="Linear Velocity:", 
+        ttk.Label(input_panel, text="Linear Vel:", 
                  font=('Arial', 9, 'bold'), foreground='darkblue').pack(anchor='w', pady=(0, 2))
         
         self.linear_var = tk.StringVar()
@@ -300,6 +340,9 @@ class VisualizerWindow:
         # Initialize frame input field with current frame
         self.frame_var.set(str(self.data_manager.pointer + 1))
         
+        # Initialize previous angular velocity display
+        self.prev_turn_var.set("0.00")
+        
         # Bind Enter key to input fields for data update (matching original pygame behavior)
         self.turn_entry.bind('<Return>', self.on_angular_velocity_input)
         self.linear_entry.bind('<Return>', self.on_linear_velocity_input)
@@ -317,6 +360,11 @@ class VisualizerWindow:
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
         file_menu.add_command(label="Browse Data...", command=self.browse_data_file, accelerator="Ctrl+O")
+        
+        # Recent files submenu
+        self.recent_menu = tk.Menu(file_menu, tearoff=0)
+        file_menu.add_cascade(label="Recent", menu=self.recent_menu)
+        
         file_menu.add_separator()
         file_menu.add_command(label="Save Data", command=self.save_data, accelerator="Ctrl+S")
         
@@ -340,7 +388,8 @@ class VisualizerWindow:
         """Handle keyboard events"""
         # Check if any text field is focused - if so, ignore navigation keys
         if (self.turn_entry.focus_get() == self.turn_entry or 
-            self.frame_entry.focus_get() == self.frame_entry):
+            self.frame_entry.focus_get() == self.frame_entry or
+            self.prev_turn_entry.focus_get() == self.prev_turn_entry):
             # Text field is focused, only allow non-navigation keys
             if event.keysym.lower() in ['i', 'a', 'q']:
                 # Allow mode toggles and quit even when text field is focused
@@ -362,6 +411,12 @@ class VisualizerWindow:
             self.toggle_augmented()
         elif event.keysym.lower() == 'q':
             self.quit_visualizer()
+        elif event.keysym.lower() == 'r':
+            # R key for replace current angular velocity with previous
+            self.replace_with_previous()
+        elif event.keysym.lower() == 'u':
+            # U key for undo last change
+            self.undo_last_change()
         elif event.keysym == 'Left' and self.inspect_mode:
             # Left arrow key for previous frame in inspect mode
             self.prev_frame()
@@ -388,9 +443,28 @@ class VisualizerWindow:
             # Page Down for last modified frame
             self.last_modified_frame()
     
+    def update_previous_angular_velocity(self):
+        """Update the previous angular velocity from current frame data"""
+        try:
+            if self.distances and len(self.distances) == LIDAR_RESOLUTION + 1:
+                current_angular = float(self.distances[360])
+                if self.augmented_mode:
+                    current_angular = -current_angular
+                self.prev_angular_velocity = current_angular
+                
+                # Update the previous angular velocity display
+                self.prev_turn_var.set(f"{self.prev_angular_velocity:.2f}")
+                print(f"Updated previous angular velocity: {self.prev_angular_velocity}")
+        except (ValueError, TypeError, IndexError):
+            self.prev_angular_velocity = 0.0
+            self.prev_turn_var.set("0.00")
+    
     def prev_frame(self):
         """Move to previous frame in inspect mode"""
         if self.inspect_mode and self.data_manager.has_prev():
+            # Store current angular velocity as previous before moving
+            self.update_previous_angular_velocity()
+            
             # Move back one frame using DataManager's prev method
             self.data_manager.prev()
             
@@ -408,6 +482,9 @@ class VisualizerWindow:
     def next_frame(self):
         """Move to next frame in inspect mode"""
         if self.inspect_mode and self.data_manager.has_next():
+            # Store current angular velocity as previous before moving
+            self.update_previous_angular_velocity()
+            
             # Move forward one frame using DataManager's next method
             self.data_manager.next()
             
@@ -425,6 +502,9 @@ class VisualizerWindow:
     def first_frame(self):
         """Jump to first frame in inspect mode"""
         if self.inspect_mode:
+            # Store current angular velocity as previous before moving
+            self.update_previous_angular_velocity()
+            
             # Jump to first frame using DataManager's first method
             self.data_manager.first()
             
@@ -442,6 +522,9 @@ class VisualizerWindow:
     def last_frame(self):
         """Jump to last frame in inspect mode"""
         if self.inspect_mode:
+            # Store current angular velocity as previous before moving
+            self.update_previous_angular_velocity()
+            
             # Jump to last frame using DataManager's last method
             self.data_manager.last()
             
@@ -464,6 +547,9 @@ class VisualizerWindow:
     def first_modified_frame(self):
         """Jump to first modified frame"""
         if self.inspect_mode and self.data_manager.modified_frames:
+            # Store current angular velocity as previous before moving
+            self.update_previous_angular_velocity()
+            
             self.data_manager.first_modified()
             
             # Update display
@@ -480,6 +566,9 @@ class VisualizerWindow:
     def prev_modified_frame(self):
         """Navigate to previous modified frame"""
         if self.inspect_mode and self.data_manager.has_prev_modified():
+            # Store current angular velocity as previous before moving
+            self.update_previous_angular_velocity()
+            
             self.data_manager.prev_modified()
             
             # Update display
@@ -496,6 +585,9 @@ class VisualizerWindow:
     def next_modified_frame(self):
         """Navigate to next modified frame"""
         if self.inspect_mode and self.data_manager.has_next_modified():
+            # Store current angular velocity as previous before moving
+            self.update_previous_angular_velocity()
+            
             self.data_manager.next_modified()
             
             # Update display
@@ -512,6 +604,9 @@ class VisualizerWindow:
     def last_modified_frame(self):
         """Jump to last modified frame"""
         if self.inspect_mode and self.data_manager.modified_frames:
+            # Store current angular velocity as previous before moving
+            self.update_previous_angular_velocity()
+            
             self.data_manager.last_modified()
             
             # Update display
@@ -571,6 +666,192 @@ class VisualizerWindow:
             error_msg = f"Error jumping to frame: {str(e)}"
             messagebox.showerror("Error", error_msg)
             print(f"Error in on_frame_input: {e}")
+    
+    def replace_with_previous(self):
+        """Replace current angular velocity with previous frame's angular velocity"""
+        try:
+            if hasattr(self, 'prev_angular_velocity'):
+                # Store old value for undo before making changes
+                old_turn = self.turn_var.get() if self.turn_var.get() else "0.0"
+                current_frame = self.data_manager._pointer
+                
+                # Add to undo stack before making changes
+                self.add_to_undo_stack(current_frame, old_turn, str(self.prev_angular_velocity))
+                
+                # Set the current angular velocity to the previous one
+                self.turn_var.set(str(self.prev_angular_velocity))
+                
+                # Trigger the update (simulate pressing Enter) - but don't double-track in undo
+                # Create a mock event for the on_angular_velocity_input method
+                class MockEvent:
+                    pass
+                mock_event = MockEvent()
+                
+                # Temporarily disable undo tracking for this update
+                temp_undo_stack = self.undo_stack[:]  # Save current stack
+                self.on_angular_velocity_input(mock_event)
+                self.undo_stack = temp_undo_stack  # Restore stack (remove double entry)
+                
+                print(f"Replaced current angular velocity with previous: {self.prev_angular_velocity}")
+            else:
+                print("No previous angular velocity available")
+                
+        except Exception as e:
+            error_msg = f"Error replacing angular velocity: {str(e)}"
+            messagebox.showerror("Error", error_msg)
+            print(f"Error in replace_with_previous: {e}")
+    
+    def add_to_undo_stack(self, frame_index, old_value, new_value):
+        """Add a change to the undo stack"""
+        try:
+            # Only add if values are actually different
+            if str(old_value) != str(new_value):
+                self.undo_stack.append((frame_index, old_value, new_value))
+                
+                # Limit undo stack size
+                if len(self.undo_stack) > self.max_undo_steps:
+                    self.undo_stack.pop(0)  # Remove oldest entry
+                    
+                print(f"Added to undo stack: Frame {frame_index}, {old_value} -> {new_value}")
+        except Exception as e:
+            print(f"Error adding to undo stack: {e}")
+    
+    def undo_last_change(self):
+        """Undo the last change made"""
+        try:
+            if not self.undo_stack:
+                print("Nothing to undo")
+                return
+            
+            # Get the last change
+            frame_index, old_value, new_value = self.undo_stack.pop()
+            
+            # Navigate to the frame that was changed
+            current_frame = self.data_manager._pointer
+            if current_frame != frame_index:
+                # Jump to the frame that needs to be undone
+                self.data_manager._pointer = frame_index
+                self.data_manager._read_pos = frame_index - 1  # Force re-reading
+                self.update_display()
+            
+            # Restore the old value
+            self.turn_var.set(str(old_value))
+            
+            # Update the data without adding to undo stack (to avoid infinite loop)
+            if self.distances and len(self.distances) == LIDAR_RESOLUTION + 1:
+                self.distances[360] = old_value
+                
+                # Update the data manager's current dataframe
+                if hasattr(self.data_manager, '_lidar_dataframe') and len(self.data_manager._lidar_dataframe) > 360:
+                    self.data_manager._lidar_dataframe[360] = old_value
+                    
+                    # Update the original line data in memory
+                    updated_line = ','.join(str(x) for x in self.data_manager._lidar_dataframe)
+                    self.data_manager.lines[self.data_manager._pointer] = updated_line + '\n'
+                    
+                    # If old value is the same as original, remove from modified frames
+                    # (This is a simplified approach - in practice you'd want to track original values)
+                    if str(old_value) == "0.0" or old_value == 0.0:  # Assuming 0.0 is default
+                        if frame_index in self.data_manager._modified_frames:
+                            self.data_manager._modified_frames.remove(frame_index)
+                            # Update modified pointer
+                            if self.data_manager._modified_frames:
+                                try:
+                                    self.data_manager._modified_pointer = self.data_manager._modified_frames.index(frame_index)
+                                except ValueError:
+                                    self.data_manager._modified_pointer = max(0, min(len(self.data_manager._modified_frames) - 1, self.data_manager._modified_pointer))
+                            else:
+                                self.data_manager._modified_pointer = -1
+                    
+                    print(f"Undone change: Frame {frame_index}, restored to {old_value} (was {new_value})")
+                    
+                    # Update UI
+                    self.update_inputs()
+                    self.render_frame()
+                    
+        except Exception as e:
+            error_msg = f"Error during undo: {str(e)}"
+            messagebox.showerror("Error", error_msg)
+            print(f"Error in undo_last_change: {e}")
+    
+    def load_recent_files(self):
+        """Load recent files from disk"""
+        try:
+            if os.path.exists(self.recent_files_path):
+                with open(self.recent_files_path, 'r') as f:
+                    self.recent_files = [line.strip() for line in f.readlines() if line.strip()]
+                    # Keep only files that still exist
+                    self.recent_files = [f for f in self.recent_files if os.path.exists(f)]
+                    # Limit to max_recent_files
+                    self.recent_files = self.recent_files[:self.max_recent_files]
+                print(f"Loaded {len(self.recent_files)} recent files")
+        except Exception as e:
+            print(f"Error loading recent files: {e}")
+            self.recent_files = []
+    
+    def save_recent_files(self):
+        """Save recent files to disk"""
+        try:
+            with open(self.recent_files_path, 'w') as f:
+                for file_path in self.recent_files:
+                    f.write(file_path + '\n')
+            print(f"Saved {len(self.recent_files)} recent files")
+        except Exception as e:
+            print(f"Error saving recent files: {e}")
+    
+    def add_recent_file(self, file_path):
+        """Add a file to the recent files list"""
+        try:
+            # Convert to absolute path
+            abs_path = os.path.abspath(file_path)
+            
+            # Remove if already exists (to move it to top)
+            if abs_path in self.recent_files:
+                self.recent_files.remove(abs_path)
+            
+            # Add to beginning of list
+            self.recent_files.insert(0, abs_path)
+            
+            # Keep only max_recent_files
+            self.recent_files = self.recent_files[:self.max_recent_files]
+            
+            # Save to disk
+            self.save_recent_files()
+            
+            # Update menu
+            self.update_recent_files_menu()
+            
+        except Exception as e:
+            print(f"Error adding recent file: {e}")
+    
+    def load_recent_file(self, file_path):
+        """Load a file from the recent files list"""
+        if os.path.exists(file_path):
+            self.load_data_file(file_path)
+        else:
+            # File no longer exists, remove from recent files
+            if file_path in self.recent_files:
+                self.recent_files.remove(file_path)
+                self.save_recent_files()
+                self.update_recent_files_menu()
+            messagebox.showerror("File Not Found", f"File not found:\n{file_path}")
+    
+    def update_recent_files_menu(self):
+        """Update the recent files submenu"""
+        if hasattr(self, 'recent_menu'):
+            # Clear existing menu items
+            self.recent_menu.delete(0, 'end')
+            
+            if self.recent_files:
+                for i, file_path in enumerate(self.recent_files):
+                    # Show just the filename for display
+                    display_name = f"{i+1}. {os.path.basename(file_path)}"
+                    self.recent_menu.add_command(
+                        label=display_name,
+                        command=lambda fp=file_path: self.load_recent_file(fp)
+                    )
+            else:
+                self.recent_menu.add_command(label="(No recent files)", state='disabled')
     
     def toggle_pause(self):
         """Toggle pause state"""
@@ -685,6 +966,44 @@ class VisualizerWindow:
         
         self.status_var.set(f"Data: {os.path.basename(self.config['data_file'])} | Mode: {mode_text} | Data: {data_text}")
     
+    def load_data_file(self, filename):
+        """Load a data file and update the application state"""
+        try:
+            # Update status to show loading
+            old_status = self.status_var.get()
+            self.status_var.set("Loading data file...")
+            self.root.update()
+            
+            # Create new data manager with the selected file
+            self.data_manager = DataManager(filename, 'data/run2/_out.txt', False)
+            calculate_scale_factor(self.data_manager)
+            
+            # Update config
+            self.config['data_file'] = filename
+            
+            # Update window title
+            self.root.title(f"Lidar Visualizer - {os.path.basename(filename)}")
+            
+            # Reset visualization state
+            self.distances = []
+            
+            # Update status to show success
+            self.status_var.set(f"Data loaded: {os.path.basename(filename)} | Mode: {'INSPECT' if self.inspect_mode else 'CONTINUOUS'} | Data: {'AUGMENTED' if self.augmented_mode else 'REAL'}")
+            
+            # Add to recent files and update menu
+            self.add_recent_file(filename)
+            self.update_recent_files_menu()
+            
+            print(f"Successfully loaded data file: {filename}")
+            return True
+            
+        except Exception as e:
+            error_msg = f"Failed to load data file: {str(e)}"
+            messagebox.showerror("Error", error_msg)
+            self.status_var.set(old_status)  # Restore previous status
+            print(f"Error loading data file: {e}")
+            return False
+
     def browse_data_file(self):
         """Browse for a new data file and load it"""
         file_types = [
@@ -700,35 +1019,7 @@ class VisualizerWindow:
         )
         
         if filename:
-            try:
-                # Update status to show loading
-                old_status = self.status_var.get()
-                self.status_var.set("Loading new data file...")
-                self.root.update()
-                
-                # Create new data manager with the selected file
-                self.data_manager = DataManager(filename, 'data/run2/_out.txt', False)
-                calculate_scale_factor(self.data_manager)
-                
-                # Update config
-                self.config['data_file'] = filename
-                
-                # Update window title
-                self.root.title(f"Lidar Visualizer - {os.path.basename(filename)}")
-                
-                # Reset visualization state
-                self.distances = []
-                
-                # Update status to show success
-                self.status_var.set(f"Data loaded: {os.path.basename(filename)} | Mode: {'INSPECT' if self.inspect_mode else 'CONTINUOUS'} | Data: {'AUGMENTED' if self.augmented_mode else 'REAL'}")
-                
-                print(f"Successfully loaded data file: {filename}")
-                
-            except Exception as e:
-                error_msg = f"Failed to load data file: {str(e)}"
-                messagebox.showerror("Error", error_msg)
-                self.status_var.set(old_status)  # Restore previous status
-                print(f"Error loading data file: {e}")
+            self.load_data_file(filename)
     
     def save_data(self):
         """Save the current data back to the original input file"""
@@ -1839,6 +2130,13 @@ Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
             
             # Update the current data frame with new angular velocity
             if self.distances and len(self.distances) == LIDAR_RESOLUTION + 1:
+                # Store old value for undo before making changes
+                old_turn = self.distances[360] if len(self.distances) > 360 else "0.0"
+                current_frame = self.data_manager._pointer
+                
+                # Add to undo stack before making changes
+                self.add_to_undo_stack(current_frame, old_turn, new_turn)
+                
                 self.distances[360] = new_turn
                 
                 # Update the data manager's current dataframe
@@ -2000,6 +2298,25 @@ Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
             except (ValueError, TypeError):
                 pass
             
+            # Draw previous frame direction (in red)
+            try:
+                prev_turn_value = self.prev_angular_velocity
+                if self.augmented_mode:
+                    prev_turn_value = -prev_turn_value
+                    
+                # Apply configurable direction ratio mapping for previous frame
+                prev_angle_degrees = (prev_turn_value / self.direction_ratio_max_angular) * self.direction_ratio_max_degree
+                # Convert degrees to radians for math functions
+                prev_angle_radians = prev_angle_degrees * math.pi / 180
+                
+                prev_x = math.cos(prev_angle_radians) * car_line_length
+                prev_y = math.sin(prev_angle_radians) * car_line_length
+                # Flip Y coordinate to match lidar coordinate system (pygame Y increases downward)
+                pygame.draw.line(self.screen, (255, 0, 0), (center_x, center_y),
+                               (center_x + prev_x, center_y - prev_y), 2)  # Slightly thinner line
+            except (ValueError, TypeError):
+                pass
+            
             pygame.display.flip()
         except Exception as e:
             print(f"Error rendering frame: {e}")
@@ -2044,6 +2361,9 @@ Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
                 # Advance to next frame if not paused
                 if not self.paused:
                     try:
+                        # Store current angular velocity as previous before advancing
+                        self.update_previous_angular_velocity()
+                        
                         self.data_manager.write_line()
                         self.data_manager.next()
                     except Exception as advance_error:
