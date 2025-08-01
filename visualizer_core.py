@@ -1266,10 +1266,17 @@ Max: {np.max(stats['angular_velocities']):.3f}"""
     # AI functions - stubs for now
     def browse_ai_model(self):
         """Browse for AI model"""
+        import os
+        
+        # Default to ./models directory if it exists, otherwise current directory
+        models_dir = "./models"
+        if not os.path.exists(models_dir):
+            models_dir = "."
+            
         file_path = filedialog.askopenfilename(
             title="Select AI Model",
             filetypes=[("Pickle files", "*.pkl"), ("All files", "*.*")],
-            initialdir="./models"
+            initialdir=models_dir
         )
         if file_path:
             try:

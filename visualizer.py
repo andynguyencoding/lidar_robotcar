@@ -1122,6 +1122,13 @@ class VisualizerWindow:
 
     def browse_data_file(self):
         """Browse for a new data file and load it"""
+        import os
+        
+        # Set initial directory to ./data, fallback to current directory if not exists
+        initial_dir = "./data"
+        if not os.path.exists(initial_dir):
+            initial_dir = "."
+            
         file_types = [
             ("CSV files", "*.csv"),
             ("Text files", "*.txt"),
@@ -1131,7 +1138,7 @@ class VisualizerWindow:
         filename = filedialog.askopenfilename(
             title="Select Data File",
             filetypes=file_types,
-            initialdir="/home/andy"
+            initialdir=initial_dir
         )
         
         if filename:

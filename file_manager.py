@@ -63,8 +63,14 @@ class FileManager:
         except Exception as e:
             print(f"Error adding recent file: {e}")
     
-    def browse_data_file(self, initial_dir="/home/andy"):
+    def browse_data_file(self, initial_dir="./data"):
         """Browse for a data file and return the selected filename"""
+        import os
+        
+        # Ensure the initial directory exists, fallback to current directory if not
+        if not os.path.exists(initial_dir):
+            initial_dir = "."
+            
         file_types = [
             ("CSV files", "*.csv"),
             ("Text files", "*.txt"),
