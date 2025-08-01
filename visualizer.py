@@ -419,6 +419,13 @@ class VisualizerWindow:
         ai_menu.add_separator()
         ai_menu.add_command(label="Model Info...", command=self.show_ai_model_info)
         ai_menu.add_command(label="Clear Model", command=self.clear_ai_model)
+        ai_menu.add_separator()
+        
+        # K-Best submenu
+        kbest_menu = tk.Menu(ai_menu, tearoff=0)
+        ai_menu.add_cascade(label="K-Best", menu=kbest_menu)
+        kbest_menu.add_command(label="Load K-Best...", command=self.show_kbest_analysis)
+        kbest_menu.add_command(label="View Current Positions...", command=self.show_current_kbest_positions)
         
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
@@ -2233,6 +2240,106 @@ Email: hoang.g.nguyen@student.uts.edu.au
 A comprehensive LiDAR data visualization tool with AI integration capabilities."""
         
         messagebox.showinfo("About LiDAR Visualizer", about_text)
+    
+    def show_kbest_analysis(self):
+        """Show the K-Best feature analysis dialog"""
+        try:
+            from kbest_analysis import show_kbest_analysis_dialog
+            
+            def refresh_visualization():
+                """Callback to refresh visualization after applying K-Best results"""
+                # Force a re-render to show updated DECISIVE_FRAME_POSITIONS
+                if hasattr(self, 'distances') and self.distances:
+                    self.render_frame()
+                    print("Visualization refreshed with new K-Best positions")
+            
+            # Show the K-Best analysis dialog
+            show_kbest_analysis_dialog(self.root, self.data_manager, refresh_visualization)
+            
+        except ImportError as e:
+            messagebox.showerror("Import Error", f"Could not import K-Best analysis module:\n{str(e)}\n\nPlease ensure scikit-learn is installed.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Error opening K-Best analysis:\n{str(e)}")
+            print(f"Error opening K-Best analysis: {e}")
+    
+    def show_current_kbest_positions(self):
+        """Show the current K-Best data point positions"""
+        try:
+            # Create a new dialog window
+            dialog = tk.Toplevel(self.root)
+            dialog.title("Current K-Best Positions")
+            dialog.geometry("600x500")
+            dialog.transient(self.root)
+            dialog.grab_set()
+            
+            # Center the dialog on the parent window
+            dialog.update_idletasks()
+            x = (self.root.winfo_x() + (self.root.winfo_width() // 2) - (dialog.winfo_width() // 2))
+            y = (self.root.winfo_y() + (self.root.winfo_height() // 2) - (dialog.winfo_height() // 2))
+            dialog.geometry(f"+{x}+{y}")
+            
+            # Create main frame
+            main_frame = tk.Frame(dialog)
+            main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+            
+            # Title label
+            title_label = tk.Label(main_frame, 
+                                 text="Current K-Best Data Point Positions", 
+                                 font=('Arial', 14, 'bold'))
+            title_label.pack(pady=(0, 10))
+            
+            # Information text
+            info_text = f"Total positions: {len(DECISIVE_FRAME_POSITIONS)}\n"
+            info_text += "These positions are highlighted in the visualization with magenta lines and red circles.\n\n"
+            info_text += "Positions (0-359 degrees):"
+            
+            info_label = tk.Label(main_frame, text=info_text, justify=tk.LEFT)
+            info_label.pack(anchor=tk.W, pady=(0, 10))
+            
+            # Create scrollable text widget for positions
+            text_frame = tk.Frame(main_frame)
+            text_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # Text widget with scrollbar
+            text_widget = tk.Text(text_frame, wrap=tk.WORD, state=tk.DISABLED, 
+                                height=15, font=('Courier', 10))
+            scrollbar = tk.Scrollbar(text_frame, orient=tk.VERTICAL, command=text_widget.yview)
+            text_widget.configure(yscrollcommand=scrollbar.set)
+            
+            text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            
+            # Format positions in a readable way (10 per line)
+            text_widget.config(state=tk.NORMAL)
+            positions_text = ""
+            for i, pos in enumerate(DECISIVE_FRAME_POSITIONS):
+                if i % 10 == 0 and i > 0:
+                    positions_text += "\n"
+                positions_text += f"{pos:3d}  "
+            
+            text_widget.insert(tk.END, positions_text)
+            text_widget.config(state=tk.DISABLED)
+            
+            # Button frame
+            button_frame = tk.Frame(main_frame)
+            button_frame.pack(fill=tk.X, pady=(10, 0))
+            
+            # Close button
+            close_button = tk.Button(button_frame, text="Close", command=dialog.destroy)
+            close_button.pack(side=tk.RIGHT)
+            
+            # Copy to clipboard button
+            def copy_to_clipboard():
+                positions_str = str(DECISIVE_FRAME_POSITIONS)
+                dialog.clipboard_clear()
+                dialog.clipboard_append(positions_str)
+                messagebox.showinfo("Copied", "Positions copied to clipboard!")
+            
+            copy_button = tk.Button(button_frame, text="Copy to Clipboard", command=copy_to_clipboard)
+            copy_button.pack(side=tk.RIGHT, padx=(0, 10))
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Error showing current K-Best positions:\n{str(e)}")
 
     def quit_visualizer(self):
         """Quit the visualizer"""

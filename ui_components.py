@@ -328,6 +328,13 @@ class UIManager:
         ai_menu.add_separator()
         ai_menu.add_command(label="Model Info...", command=self.callbacks.get('show_ai_model_info'))
         ai_menu.add_command(label="Clear Model", command=self.callbacks.get('clear_ai_model'))
+        ai_menu.add_separator()
+        
+        # K-Best submenu
+        kbest_menu = tk.Menu(ai_menu, tearoff=0)
+        ai_menu.add_cascade(label="K-Best", menu=kbest_menu)
+        kbest_menu.add_command(label="Load K-Best...", command=self.callbacks.get('show_kbest_analysis'))
+        kbest_menu.add_command(label="View Current Positions...", command=self.callbacks.get('show_current_kbest_positions'))
         
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
