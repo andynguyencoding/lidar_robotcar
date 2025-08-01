@@ -3,6 +3,55 @@
 ## Introduction
 Using Lidar with Machine Learning to build a self-driving car solution. This project combines RPLidar sensor data with machine learning algorithms to create an autonomous vehicle that can navigate using 360-degree lidar readings.
 
+## Software Versions
+
+This project includes two versions of the visualization software:
+
+### 🔹 **Modular Version** (Recommended)
+- **Entry Point**: `python main.py`
+- **Architecture**: Clean, modular design with separate components
+- **Files**: `main.py`, `visualizer_core.py`, `ui_components.py`, `frame_navigation.py`, etc.
+- **Benefits**: 
+  - Better maintainability and code organization
+  - Easier to extend and modify
+  - Follows modern software engineering practices
+  - Faster startup and better performance
+
+### 🔸 **Monolithic Version** (Legacy)
+- **Entry Point**: `python visualizer.py`
+- **Architecture**: Single-file implementation with all functionality
+- **Files**: `visualizer.py` (3,300+ lines)
+- **Benefits**:
+  - Self-contained in one file
+  - Good for understanding the complete system
+  - Useful for debugging and learning
+
+Both versions provide **identical functionality** including:
+- Interactive LiDAR data visualization
+- Frame-by-frame inspection mode
+- Data statistics with histogram analysis
+- Data imputation and augmentation tools
+- AI model integration and predictions
+- Help menu with About dialog (Version 0.1, Author: Hoang Giang Nguyen)
+
+**Recommendation**: Use the modular version (`python main.py`) for regular use and development work.
+
+## Quick Start
+
+1. **Run the recommended modular version:**
+   ```bash
+   python main.py
+   ```
+
+2. **Or run the legacy monolithic version:**
+   ```bash
+   python visualizer.py
+   ```
+
+3. **Access Help and About information:**
+   - Click **Help > About...** in the menu bar
+   - Shows version 0.1, author information, and contact details
+
 ## Project Overview
 - **Data Collection**: Manual driving to gather lidar readings and steering commands
 - **Data Visualization**: Interactive GUI visualizer for analyzing and cleaning data
@@ -10,6 +59,27 @@ Using Lidar with Machine Learning to build a self-driving car solution. This pro
 - **Data Augmentation**: Horizontal mirroring and append/replace options to enhance datasets
 - **Machine Learning**: Random Forest Regressor for steering prediction
 - **Autonomous Mode**: Real-time lidar-based navigation
+
+## Project Structure
+
+```
+lidar_robotcar/
+├── 📁 Core Application Files
+│   ├── main.py                 # Modular version entry point
+│   ├── visualizer_core.py      # Modular main controller
+│   ├── ui_components.py        # UI management
+│   ├── frame_navigation.py     # Frame navigation logic
+│   ├── visualization_renderer.py # Pygame rendering
+│   ├── visualizer.py          # Monolithic version (legacy)
+│   ├── ai_model.py            # AI model integration
+│   └── pginput.py             # Data management
+├── 📁 test/                   # Test scripts and utilities
+├── 📁 docs/                   # Documentation and manuals
+│   └── development/           # Development documentation
+├── 📁 data/                   # LiDAR data files
+├── 📁 models/                 # Trained ML models (.pkl files)
+└── 📁 notebooks/              # Jupyter notebooks for training
+```
 
 ## Electronics components
 The documentation is in docs folder. All the electronics parts are listed here.
@@ -21,25 +91,32 @@ After assembling the car, put it into data collection mode and drive it manually
 
 ### 2. Data Visualization and Processing
 
-## Using the Advanced GUI Visualizer
+## Using the GUI Visualizer
 
-The visualizer.py program provides a comprehensive interactive GUI for viewing, analyzing, and processing lidar data with extensive configuration and processing options.
+Both versions of the visualizer provide comprehensive interactive GUI for viewing, analyzing, and processing lidar data with extensive configuration and processing options.
 
 ### Starting the Visualizer
 
-**Method 1: GUI Configuration Window (Recommended)**
+**Modular Version (Recommended):**
 ```bash
-python3 visualizer.py
+python main.py
 ```
-This opens a configuration window where you can:
+
+**Monolithic Version (Legacy):**
+```bash
+python visualizer.py
+```
+
+**GUI Configuration Window:**
+Both versions open a configuration window where you can:
 - Choose data source (local data or browse for custom file)
 - Enable inspection mode for frame-by-frame analysis
 - Toggle augmented data display (mirrored data for training)
 - Enable data concatenation to double your dataset
 
-**Method 2: Command Line with File Argument**
+**Command Line with File Argument (Monolithic version only):**
 ```bash
-python3 visualizer.py /path/to/your/datafile.csv
+py visualizer.py /path/to/your/datafile.csv
 ```
 This opens the configuration window with the specified file pre-selected and data source options grayed out.
 
@@ -148,12 +225,21 @@ Access comprehensive data analysis and processing tools:
 
 ### Data Format
 
-The visualizer supports CSV/TXT files with:
+Both visualizer versions support CSV/TXT files with:
 - 360 columns of lidar distance data (one per degree, 0-359)
 - 1 additional column for turn/steering value (column 360)
 - Optional header row (automatically detected and preserved)
 - Values can be numeric distances, 'inf', 'nan', or '0' for invalid readings
 - Angular velocity values can be positive (right turn) or negative (left turn)
+
+### Version Compatibility
+
+Both versions provide identical functionality and data compatibility:
+- Same file formats supported (CSV/TXT)
+- Same keyboard shortcuts and menu options
+- Same data processing capabilities
+- Same AI model integration
+- Identical visualization and analysis features
 
 ### Troubleshooting
 

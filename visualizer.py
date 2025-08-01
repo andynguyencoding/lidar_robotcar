@@ -420,6 +420,11 @@ class VisualizerWindow:
         ai_menu.add_command(label="Model Info...", command=self.show_ai_model_info)
         ai_menu.add_command(label="Clear Model", command=self.clear_ai_model)
         
+        # Help menu
+        help_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Help", menu=help_menu)
+        help_menu.add_command(label="About...", command=self.show_about_dialog)
+        
         # Bind keyboard shortcuts
         self.root.bind_all("<Control-o>", lambda e: self.browse_data_file())
         self.root.bind_all("<Control-s>", lambda e: self.save_data())
@@ -2215,6 +2220,19 @@ The model predicts car direction and is visualized with an orange line in the Li
                 
         except Exception as e:
             messagebox.showerror("Error", f"Error clearing AI model: {str(e)}")
+    
+    def show_about_dialog(self):
+        """Show the About dialog"""
+        about_text = """LiDAR Visualizer
+
+Version: 0.1
+Date: 01/08/2025
+Author: Hoang Giang Nguyen
+Email: hoang.g.nguyen@student.uts.edu.au
+
+A comprehensive LiDAR data visualization tool with AI integration capabilities."""
+        
+        messagebox.showinfo("About LiDAR Visualizer", about_text)
 
     def quit_visualizer(self):
         """Quit the visualizer"""

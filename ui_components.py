@@ -328,6 +328,11 @@ class UIManager:
         ai_menu.add_separator()
         ai_menu.add_command(label="Model Info...", command=self.callbacks.get('show_ai_model_info'))
         ai_menu.add_command(label="Clear Model", command=self.callbacks.get('clear_ai_model'))
+        
+        # Help menu
+        help_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Help", menu=help_menu)
+        help_menu.add_command(label="About...", command=self.callbacks.get('show_about_dialog'))
     
     def bind_events(self):
         """Bind keyboard and other events"""

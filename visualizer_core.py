@@ -161,6 +161,9 @@ class VisualizerWindow:
             'show_ai_model_info': self.show_ai_model_info,
             'clear_ai_model': self.clear_ai_model,
             
+            # Help functions
+            'show_about_dialog': self.show_about_dialog,
+            
             # Visual settings
             'show_scale_factor_dialog': self.show_scale_factor_dialog,
             'show_direction_ratio_dialog': self.show_direction_ratio_dialog
@@ -1245,6 +1248,19 @@ Max: {np.max(stats['angular_velocities']):.3f}"""
         from ai_model import ai_model_manager
         ai_model_manager.clear_model()
         messagebox.showinfo("Success", "AI model cleared")
+    
+    def show_about_dialog(self):
+        """Show the About dialog"""
+        about_text = """LiDAR Visualizer
+
+Version: 0.1
+Date: 01/08/2025
+Author: Hoang Giang Nguyen
+Email: hoang.g.nguyen@student.uts.edu.au
+
+A comprehensive LiDAR data visualization tool with AI integration capabilities."""
+        
+        messagebox.showinfo("About LiDAR Visualizer", about_text)
     
     # Visual settings - stubs for now
     def show_scale_factor_dialog(self):
