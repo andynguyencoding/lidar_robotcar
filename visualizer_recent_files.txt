@@ -1,4 +1,4 @@
 /home/andy/mysource/github/lidar_robotcar/data/run1/out1.txt
-/home/andy/mysource/github/lidar_robotcar/data/simulation/lidar_training_data_20250727_095526_test.csv
 /home/andy/mysource/github/lidar_robotcar/data/simulation/lidar_training_data_20250727_095526_full.csv
+/home/andy/mysource/github/lidar_robotcar/data/simulation/lidar_training_data_20250727_095526_test.csv
 /home/andy/mysource/github/lidar_robotcar/data/run2/out.txt

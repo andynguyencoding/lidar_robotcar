@@ -273,14 +273,14 @@ class UIManager:
         vis_toggles_frame = ttk.Frame(parent)
         vis_toggles_frame.pack(fill='x', pady=(0, 5))
         
-        ttk.Checkbutton(vis_toggles_frame, text="Cur Vel", variable=self.show_current_vel, 
-                       command=self.callbacks.get('on_visualization_toggle'), width=8).pack(side='left', padx=(0, 5))
-        ttk.Checkbutton(vis_toggles_frame, text="Prev Vel", variable=self.show_prev_vel,
-                       command=self.callbacks.get('on_visualization_toggle'), width=8).pack(side='left', padx=(0, 5))
-        ttk.Checkbutton(vis_toggles_frame, text="Pred Vel", variable=self.show_pred_vel,
-                       command=self.callbacks.get('on_visualization_toggle'), width=8).pack(side='left', padx=(0, 5))
-        ttk.Checkbutton(vis_toggles_frame, text="Fwd Dir", variable=self.show_forward_dir,
-                       command=self.callbacks.get('on_visualization_toggle'), width=8).pack(side='left', padx=(0, 5))
+        tk.Checkbutton(vis_toggles_frame, text="Cur Vel", variable=self.show_current_vel, 
+                      command=self.callbacks.get('on_visualization_toggle'), width=8, fg='green').pack(side='left', padx=(0, 5))
+        tk.Checkbutton(vis_toggles_frame, text="Prev Vel", variable=self.show_prev_vel,
+                      command=self.callbacks.get('on_visualization_toggle'), width=8, fg='red').pack(side='left', padx=(0, 5))
+        tk.Checkbutton(vis_toggles_frame, text="Pred Vel", variable=self.show_pred_vel,
+                      command=self.callbacks.get('on_visualization_toggle'), width=8, fg='orange').pack(side='left', padx=(0, 5))
+        tk.Checkbutton(vis_toggles_frame, text="Fwd Dir", variable=self.show_forward_dir,
+                      command=self.callbacks.get('on_visualization_toggle'), width=8, fg='blue').pack(side='left', padx=(0, 5))
         
         # Pygame frame
         self.pygame_frame = tk.Frame(parent, width=self.current_canvas_size, 
