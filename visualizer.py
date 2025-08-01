@@ -8,6 +8,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
 import os
 import shutil
+from ai_model import ai_model_manager, load_ai_model, get_ai_prediction, is_ai_model_loaded, get_ai_model_info
 import threading
 import traceback
 import sys
@@ -57,6 +58,12 @@ class VisualizerWindow:
         # Create main tkinter window
         self.root = tk.Tk()
         self.root.title(f"Lidar Visualizer - {os.path.basename(config['data_file'])}")
+        
+        # Visualization toggle variables (must be created after root window)
+        self.show_current_vel = tk.BooleanVar(value=True)   # Current velocity (green line)
+        self.show_prev_vel = tk.BooleanVar(value=True)      # Previous velocity (red line)
+        self.show_pred_vel = tk.BooleanVar(value=True)      # AI prediction (orange line)
+        self.show_forward_dir = tk.BooleanVar(value=True)   # Forward direction (blue line)
         self.root.geometry("850x750")  # Reduced size for better usability
         self.root.resizable(True, True)  # Make window resizable
         self.root.minsize(600, 500)  # Set minimum size
@@ -226,7 +233,7 @@ class VisualizerWindow:
         shortcuts_frame.pack(fill='x', pady=(5, 0))
         
         shortcuts_label = ttk.Label(shortcuts_frame, 
-                                   text="💡 Shortcuts: Space=Play/Next | I=Mode | A=Augmented | Q=Quit | R=Replace | U=Undo | ←→=Prev/Next | Home/End=First/Last | ↑↓=Prev/Next Modified | PgUp/PgDn=First/Last Modified", 
+                                   text="💡 Shortcuts: Space=Play/Next | I=Mode | A=Augmented | Q=Quit | R=Replace | U=Undo | ←→=Prev/Next | Home/End=First/Last | ↑↓=Prev/Next Modified | PgUp/PgDn=First/Last Modified | 🤖 AI Menu: Load models for predictions", 
                                    font=('Arial', 8), foreground='navy', justify='left', 
                                    wraplength=800)  # Allow text to wrap at 800 pixels
         shortcuts_label.pack(anchor='w')
@@ -281,6 +288,15 @@ class VisualizerWindow:
                  font=('Arial', 7), foreground='darkgreen', 
                  wraplength=140).pack(anchor='w', pady=(0, 5), fill='x')
         
+        # AI Prediction angular velocity input
+        ttk.Label(input_panel, text="Pred Angular Vel:", 
+                 font=('Arial', 9, 'bold'), foreground='darkorange').pack(anchor='w', pady=(0, 2))
+        
+        self.pred_turn_var = tk.StringVar()
+        self.pred_turn_entry = ttk.Entry(input_panel, textvariable=self.pred_turn_var, 
+                                        width=18, font=('Courier', 9), state='readonly')
+        self.pred_turn_entry.pack(pady=(0, 5), fill='x')
+        
         # Status info below angular velocity input
         self.frame_info_var = tk.StringVar()
         self.frame_info_var.set("Frame: -- [--]")
@@ -325,6 +341,20 @@ class VisualizerWindow:
         center_panel = ttk.LabelFrame(content_frame, text="Lidar Visualization", padding=5)
         center_panel.pack(side='left', fill='both', expand=True, padx=(5, 0))
         
+        # Visualization toggles panel - compact checkboxes above pygame
+        vis_toggles_frame = ttk.Frame(center_panel)
+        vis_toggles_frame.pack(fill='x', pady=(0, 5))
+        
+        # Create checkboxes for visualization toggles in a single row
+        ttk.Checkbutton(vis_toggles_frame, text="Cur Vel", variable=self.show_current_vel, 
+                       command=self.on_visualization_toggle, width=8).pack(side='left', padx=(0, 5))
+        ttk.Checkbutton(vis_toggles_frame, text="Prev Vel", variable=self.show_prev_vel,
+                       command=self.on_visualization_toggle, width=8).pack(side='left', padx=(0, 5))
+        ttk.Checkbutton(vis_toggles_frame, text="Pred Vel", variable=self.show_pred_vel,
+                       command=self.on_visualization_toggle, width=8).pack(side='left', padx=(0, 5))
+        ttk.Checkbutton(vis_toggles_frame, text="Fwd Dir", variable=self.show_forward_dir,
+                       command=self.on_visualization_toggle, width=8).pack(side='left', padx=(0, 5))
+        
         # Create a frame for pygame embedding with dynamic size
         self.pygame_frame = tk.Frame(center_panel, width=self.current_canvas_size, height=self.current_canvas_size, bg='lightgray')
         self.pygame_frame.pack(pady=5, expand=True, fill='both')
@@ -342,6 +372,9 @@ class VisualizerWindow:
         
         # Initialize previous angular velocity display
         self.prev_turn_var.set("0.00")
+        
+        # Initialize AI prediction angular velocity display
+        self.pred_turn_var.set("--")
         
         # Bind Enter key to input fields for data update (matching original pygame behavior)
         self.turn_entry.bind('<Return>', self.on_angular_velocity_input)
@@ -378,6 +411,14 @@ class VisualizerWindow:
         menubar.add_cascade(label="Visual", menu=visual_menu)
         visual_menu.add_command(label="Scale Factor...", command=self.show_scale_factor_dialog)
         visual_menu.add_command(label="Direction Ratio...", command=self.show_direction_ratio_dialog)
+        
+        # AI menu
+        ai_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="AI", menu=ai_menu)
+        ai_menu.add_command(label="Browse Model...", command=self.browse_ai_model)
+        ai_menu.add_separator()
+        ai_menu.add_command(label="Model Info...", command=self.show_ai_model_info)
+        ai_menu.add_command(label="Clear Model", command=self.clear_ai_model)
         
         # Bind keyboard shortcuts
         self.root.bind_all("<Control-o>", lambda e: self.browse_data_file())
@@ -442,6 +483,16 @@ class VisualizerWindow:
         elif event.keysym == 'Next' and self.inspect_mode:   # Page Down
             # Page Down for last modified frame
             self.last_modified_frame()
+    
+    def on_visualization_toggle(self):
+        """Callback for visualization toggle checkboxes - triggers canvas redraw"""
+        try:
+            # Only redraw if we have valid distance data
+            if self.distances and len(self.distances) == LIDAR_RESOLUTION + 1:
+                self.render_frame()
+                print("Visualization toggles updated - canvas redrawn")
+        except Exception as e:
+            print(f"Error in visualization toggle callback: {e}")
     
     def update_previous_angular_velocity(self):
         """Update the previous angular velocity from current frame data"""
@@ -2069,6 +2120,102 @@ Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
         angular_entry.bind('<Return>', lambda e: apply_direction_ratio())
         popup.bind('<Escape>', lambda e: cancel_dialog())
 
+    def browse_ai_model(self):
+        """Browse for an AI model file and load it"""
+        file_types = [
+            ("Pickle files", "*.pkl"),
+            ("Pickle files", "*.pickle"),
+            ("All files", "*.*")
+        ]
+        
+        # Default to ./models directory if it exists, otherwise current directory
+        models_dir = os.path.abspath("./models")
+        if os.path.exists(models_dir):
+            initial_dir = models_dir
+        else:
+            initial_dir = os.getcwd()
+        
+        filename = filedialog.askopenfilename(
+            title="Select AI Model File",
+            filetypes=file_types,
+            initialdir=initial_dir
+        )
+        
+        if filename:
+            try:
+                # Update status to show loading
+                old_status = self.status_var.get()
+                self.status_var.set("Loading AI model...")
+                self.root.update()
+                
+                # Load the model using the AI model manager
+                success = load_ai_model(filename)
+                
+                if success:
+                    model_info = get_ai_model_info()
+                    self.status_var.set(f"{old_status} | AI Model: {os.path.basename(filename)}")
+                    messagebox.showinfo("Model Loaded", 
+                                      f"AI model loaded successfully!\n\nModel: {os.path.basename(filename)}\n{model_info}")
+                    print(f"AI model loaded: {filename}")
+                else:
+                    self.status_var.set(old_status)
+                    
+            except Exception as e:
+                error_msg = f"Unexpected error loading AI model: {str(e)}"
+                messagebox.showerror("Error", error_msg)
+                self.status_var.set(old_status)
+                print(f"Error loading AI model: {e}")
+    
+    def show_ai_model_info(self):
+        """Show information about the currently loaded AI model"""
+        if not is_ai_model_loaded():
+            messagebox.showinfo("No Model", "No AI model is currently loaded.\n\nUse 'AI > Browse Model...' to load a model.")
+            return
+        
+        try:
+            model_info = get_ai_model_info()
+            model_path = ai_model_manager.get_model_path()
+            
+            info_text = f"""AI Model Information
+
+File: {os.path.basename(model_path) if model_path else 'Unknown'}
+Path: {model_path if model_path else 'Unknown'}
+
+{model_info}
+
+The model predicts car direction and is visualized with an orange line in the LiDAR display."""
+            
+            messagebox.showinfo("AI Model Info", info_text)
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Error getting model information: {str(e)}")
+    
+    def clear_ai_model(self):
+        """Clear the currently loaded AI model"""
+        if not is_ai_model_loaded():
+            messagebox.showinfo("No Model", "No AI model is currently loaded.")
+            return
+        
+        try:
+            # Ask for confirmation
+            result = messagebox.askyesno("Clear Model", 
+                                       "Are you sure you want to clear the current AI model?\n\nThis will stop AI predictions.")
+            
+            if result:
+                ai_model_manager.clear_model()
+                
+                # Update status
+                old_status = self.status_var.get()
+                # Remove AI model info from status
+                if " | AI Model:" in old_status:
+                    self.status_var.set(old_status.split(" | AI Model:")[0])
+                
+                messagebox.showinfo("Model Cleared", "AI model has been cleared successfully.")
+                print("AI model cleared")
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Error clearing AI model: {str(e)}")
+
     def quit_visualizer(self):
         """Quit the visualizer"""
         print("Quitting visualizer...")
@@ -2275,47 +2422,105 @@ Valid Angular Velocity Values: {len(current_stats['angular_velocities'])}"""
             car_line_length = max(20, int(40 * (self.current_canvas_size / 800)))
             
             pygame.draw.circle(self.screen, (252, 132, 3), (center_x, center_y), car_radius)
-            pygame.draw.line(self.screen, (0, 0, 255), (center_x, center_y),
-                            (center_x + car_line_length, center_y), 3)
             
-            # Draw turn direction (scaled with configurable direction ratio)
-            try:
-                turn_value = float(self.distances[360])
-                if self.augmented_mode:
-                    turn_value = -turn_value
-                
-                # Apply configurable direction ratio mapping
-                # Convert angular velocity to degrees using the configured mapping
-                angle_degrees = (turn_value / self.direction_ratio_max_angular) * self.direction_ratio_max_degree
-                # Convert degrees to radians for math functions
-                angle_radians = angle_degrees * math.pi / 180
-                
-                x = math.cos(angle_radians) * car_line_length
-                y = math.sin(angle_radians) * car_line_length
-                # Flip Y coordinate to match lidar coordinate system (pygame Y increases downward)
-                pygame.draw.line(self.screen, (0, 255, 0), (center_x, center_y),
-                               (center_x + x, center_y - y), 3)
-            except (ValueError, TypeError):
-                pass
+            # Draw forward direction (blue line) - only if checkbox is checked
+            if self.show_forward_dir.get():
+                pygame.draw.line(self.screen, (0, 0, 255), (center_x, center_y),
+                                (center_x + car_line_length, center_y), 3)
             
-            # Draw previous frame direction (in red)
-            try:
-                prev_turn_value = self.prev_angular_velocity
-                if self.augmented_mode:
-                    prev_turn_value = -prev_turn_value
+            # Draw turn direction (scaled with configurable direction ratio) - current velocity (green line)
+            if self.show_current_vel.get():
+                try:
+                    turn_value = float(self.distances[360])
+                    if self.augmented_mode:
+                        turn_value = -turn_value
                     
-                # Apply configurable direction ratio mapping for previous frame
-                prev_angle_degrees = (prev_turn_value / self.direction_ratio_max_angular) * self.direction_ratio_max_degree
-                # Convert degrees to radians for math functions
-                prev_angle_radians = prev_angle_degrees * math.pi / 180
-                
-                prev_x = math.cos(prev_angle_radians) * car_line_length
-                prev_y = math.sin(prev_angle_radians) * car_line_length
-                # Flip Y coordinate to match lidar coordinate system (pygame Y increases downward)
-                pygame.draw.line(self.screen, (255, 0, 0), (center_x, center_y),
-                               (center_x + prev_x, center_y - prev_y), 2)  # Slightly thinner line
-            except (ValueError, TypeError):
-                pass
+                    # Apply configurable direction ratio mapping
+                    # Convert angular velocity to degrees using the configured mapping
+                    angle_degrees = (turn_value / self.direction_ratio_max_angular) * self.direction_ratio_max_degree
+                    # Convert degrees to radians for math functions
+                    angle_radians = angle_degrees * math.pi / 180
+                    
+                    x = math.cos(angle_radians) * car_line_length
+                    y = math.sin(angle_radians) * car_line_length
+                    # Flip Y coordinate to match lidar coordinate system (pygame Y increases downward)
+                    pygame.draw.line(self.screen, (0, 255, 0), (center_x, center_y),
+                                   (center_x + x, center_y - y), 3)
+                except (ValueError, TypeError):
+                    pass
+            
+            # Draw previous frame direction (in red) - only if checkbox is checked
+            if self.show_prev_vel.get():
+                try:
+                    prev_turn_value = self.prev_angular_velocity
+                    if self.augmented_mode:
+                        prev_turn_value = -prev_turn_value
+                        
+                    # Apply configurable direction ratio mapping for previous frame
+                    prev_angle_degrees = (prev_turn_value / self.direction_ratio_max_angular) * self.direction_ratio_max_degree
+                    # Convert degrees to radians for math functions
+                    prev_angle_radians = prev_angle_degrees * math.pi / 180
+                    
+                    prev_x = math.cos(prev_angle_radians) * car_line_length
+                    prev_y = math.sin(prev_angle_radians) * car_line_length
+                    # Flip Y coordinate to match lidar coordinate system (pygame Y increases downward)
+                    pygame.draw.line(self.screen, (255, 0, 0), (center_x, center_y),
+                                   (center_x + prev_x, center_y - prev_y), 2)  # Slightly thinner line
+                except (ValueError, TypeError):
+                    pass
+            
+            # Draw AI prediction direction (in orange) - only if checkbox is checked
+            if self.show_pred_vel.get():
+                try:
+                    if is_ai_model_loaded():
+                        # Get AI prediction for current frame
+                        current_frame = self.data_manager.pointer
+                        ai_prediction = get_ai_prediction(self.distances[:360], current_frame)
+                        
+                        if ai_prediction is not None:
+                            ai_turn_value = float(ai_prediction)
+                            if self.augmented_mode:
+                                ai_turn_value = -ai_turn_value
+                            
+                            # Update AI prediction display
+                            self.pred_turn_var.set(f"{ai_turn_value:.2f}")
+                            
+                            # Apply configurable direction ratio mapping for AI prediction
+                            ai_angle_degrees = (ai_turn_value / self.direction_ratio_max_angular) * self.direction_ratio_max_degree
+                            # Convert degrees to radians for math functions
+                            ai_angle_radians = ai_angle_degrees * math.pi / 180
+                            
+                            ai_x = math.cos(ai_angle_radians) * car_line_length
+                            ai_y = math.sin(ai_angle_radians) * car_line_length
+                            # Flip Y coordinate to match lidar coordinate system (pygame Y increases downward)
+                            pygame.draw.line(self.screen, (255, 165, 0), (center_x, center_y),
+                                           (center_x + ai_x, center_y - ai_y), 3)  # Orange color (255, 165, 0)
+                        else:
+                            # No prediction available
+                            self.pred_turn_var.set("--")
+                    else:
+                        # No AI model loaded
+                        self.pred_turn_var.set("--")
+                except (ValueError, TypeError, Exception) as e:
+                    # Silently ignore AI prediction errors to avoid disrupting visualization
+                    pass
+            else:
+                # When prediction visualization is disabled, still update the text field if model is loaded
+                try:
+                    if is_ai_model_loaded():
+                        current_frame = self.data_manager.pointer
+                        ai_prediction = get_ai_prediction(self.distances[:360], current_frame)
+                        if ai_prediction is not None:
+                            ai_turn_value = float(ai_prediction)
+                            if self.augmented_mode:
+                                ai_turn_value = -ai_turn_value
+                            self.pred_turn_var.set(f"{ai_turn_value:.2f}")
+                        else:
+                            self.pred_turn_var.set("--")
+                    else:
+                        self.pred_turn_var.set("--")
+                except:
+                    self.pred_turn_var.set("--")
             
             pygame.display.flip()
         except Exception as e:

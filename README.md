@@ -105,6 +105,24 @@ Access comprehensive data analysis and processing tools:
 - **Input Fields**: Click and type to modify angular velocity values
 - **Menu System**: Access all features through organized menu system
 
+#### AI Menu Features
+- **Browse Model...**: Load a pre-trained machine learning model (.pkl files) for prediction
+- **Model Info...**: Display detailed information about the currently loaded model
+- **Clear Model**: Unload the current AI model to stop predictions
+- **Real-time Predictions**: When a model is loaded, predictions are displayed as:
+  - Orange direction line in the visualization
+  - Predicted angular velocity value in the "Pred Angular Vel" input field
+
+#### Velocity Visualization Toggles
+- **Cur Vel**: Toggle display of current frame angular velocity (green line)
+- **Prev Vel**: Toggle display of previous frame angular velocity (red line)
+- **Pred Vel**: Toggle display of AI model prediction (orange line)
+- **Fwd Dir**: Toggle display of forward direction (blue line)
+- **Real-time Updates**: Checkboxes immediately update the visualization when toggled
+- All toggles are enabled by default; uncheck to hide specific velocity visualizations
+- AI prediction text field continues to update even when visualization is disabled
+- Perfect for comparing different velocity indicators or reducing visual clutter
+
 ### Understanding the Display
 
 - **Black dots**: Regular lidar data points
@@ -112,8 +130,12 @@ Access comprehensive data analysis and processing tools:
 - **Orange circle**: The car/robot position (center)
 - **Blue line**: Car's forward direction
 - **Green line**: Steering direction based on turn data
+- **Red line**: Previous frame's steering direction (for comparison)
+- **Orange line**: AI model prediction direction (when model is loaded)
 - **Frame Info**: Current frame number, total frames, and data mode (REAL/AUGMENTED)
 - **Input Fields**: Editable angular and linear velocity values with real-time updates
+- **Previous Angular Vel**: Previous frame's angular velocity (readonly, for comparison)
+- **Pred Angular Vel**: AI model's predicted angular velocity (readonly, shows "--" when no model loaded)
 
 ### Data Processing Workflow
 
