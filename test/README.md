@@ -1,6 +1,59 @@
-# Test Scripts
+# Test Scripts Directory
 
-This folder contains test scripts for the LiDAR Robot Car project.
+This directory contains test scripts and utilities for the LiDAR Robotcar project.
+
+## Test Categories
+
+### Core Application Tests
+- `test_modular_refactoring.py` - Tests for the modular architecture refactoring
+- `test_data_loading.py` - Data loading and management tests
+- `test_dialogs.py` - UI dialog tests
+- `test_scale_factor.py` - Scale factor calculation tests
+
+### UI and Visualization Tests
+- `test_frame_input.py` - Frame input field functionality tests
+- `test_modular_frame_input_fix.py` - Modular version frame input tests
+- `test_visualization_fixes.py` - Pygame visualization tests
+- `test_velocity_toggles.py` - Velocity display toggle tests
+- `test_toggle_callbacks.py` - UI callback tests
+
+### AI Model Tests
+- `test_ai.py` - AI model integration tests
+- `test_ai_browse_default.py` - AI model browsing tests
+- `test_pred_field.py` - AI prediction field tests
+
+## Running Tests
+
+To run individual test scripts:
+```bash
+python test_<script_name>.py
+```
+
+To run all tests in the directory:
+```bash
+python -m pytest test/
+```
+
+## Test Development Guidelines
+
+When adding new test scripts:
+1. Follow the naming convention: `test_<feature_name>.py`
+2. Include clear docstrings explaining what the test covers
+3. Use descriptive test function names
+4. Include both positive and negative test cases where applicable
+5. Mock external dependencies (hardware, AI models) when necessary
+
+## Dependencies
+
+Most tests require the main application modules:
+- `visualizer_core.py`
+- `pginput.py`
+- `ai_model.py`
+- Other core modules as needed
+
+Some tests may require additional testing libraries:
+- `pytest` for advanced testing features
+- `unittest.mock` for mocking external dependencies
 
 ## Test Files
 
