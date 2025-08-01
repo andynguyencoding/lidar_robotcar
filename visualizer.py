@@ -355,6 +355,14 @@ class VisualizerWindow:
         tk.Checkbutton(vis_toggles_frame, text="Fwd Dir", variable=self.show_forward_dir,
                       command=self.on_visualization_toggle, width=8, fg='blue').pack(side='left', padx=(0, 5))
         
+        # Add zoom control buttons on the right side
+        zoom_frame = ttk.Frame(vis_toggles_frame)
+        zoom_frame.pack(side='right', padx=(5, 0))
+        
+        ttk.Label(zoom_frame, text="Zoom:", font=('Arial', 8)).pack(side='left', padx=(0, 3))
+        ttk.Button(zoom_frame, text="−", command=self.zoom_out, width=3).pack(side='left', padx=(0, 2))
+        ttk.Button(zoom_frame, text="+", command=self.zoom_in, width=3).pack(side='left')
+        
         # Create a frame for pygame embedding with dynamic size
         self.pygame_frame = tk.Frame(center_panel, width=self.current_canvas_size, height=self.current_canvas_size, bg='lightgray')
         self.pygame_frame.pack(pady=5, expand=True, fill='both')
@@ -505,6 +513,51 @@ class VisualizerWindow:
                 print("Visualization toggles updated - canvas redrawn")
         except Exception as e:
             print(f"Error in visualization toggle callback: {e}")
+    
+    def zoom_in(self):
+        """Increase the pygame scale factor by 10%"""
+        try:
+            global SCALE_FACTOR
+            new_scale = SCALE_FACTOR * 1.1
+            SCALE_FACTOR = new_scale
+            
+            # Update status bar to show new scale factor
+            self.status_var.set(f"Scale factor: {SCALE_FACTOR:.4f} (Zoom In) | Mode: {'INSPECT' if self.inspect_mode else 'CONTINUOUS'} | Data: {'AUGMENTED' if self.augmented_mode else 'REAL'}")
+            
+            # Re-render the current frame with new scale factor
+            if self.distances and len(self.distances) == LIDAR_RESOLUTION + 1:
+                self.render_frame()
+            
+            print(f"Zoomed in - Scale factor: {SCALE_FACTOR:.4f}")
+            
+        except Exception as e:
+            print(f"Error zooming in: {e}")
+            messagebox.showerror("Zoom Error", f"Error zooming in:\n{str(e)}")
+    
+    def zoom_out(self):
+        """Decrease the pygame scale factor by 10%"""
+        try:
+            global SCALE_FACTOR
+            new_scale = SCALE_FACTOR * 0.9
+            
+            # Prevent scale factor from becoming too small
+            if new_scale < 0.01:
+                new_scale = 0.01
+                
+            SCALE_FACTOR = new_scale
+            
+            # Update status bar to show new scale factor
+            self.status_var.set(f"Scale factor: {SCALE_FACTOR:.4f} (Zoom Out) | Mode: {'INSPECT' if self.inspect_mode else 'CONTINUOUS'} | Data: {'AUGMENTED' if self.augmented_mode else 'REAL'}")
+            
+            # Re-render the current frame with new scale factor
+            if self.distances and len(self.distances) == LIDAR_RESOLUTION + 1:
+                self.render_frame()
+            
+            print(f"Zoomed out - Scale factor: {SCALE_FACTOR:.4f}")
+            
+        except Exception as e:
+            print(f"Error zooming out: {e}")
+            messagebox.showerror("Zoom Error", f"Error zooming out:\n{str(e)}")
     
     def update_previous_angular_velocity(self):
         """Update the previous angular velocity from current frame data"""

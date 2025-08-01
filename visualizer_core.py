@@ -168,7 +168,9 @@ class VisualizerWindow:
             
             # Visual settings
             'show_scale_factor_dialog': self.show_scale_factor_dialog,
-            'show_direction_ratio_dialog': self.show_direction_ratio_dialog
+            'show_direction_ratio_dialog': self.show_direction_ratio_dialog,
+            'zoom_in': self.zoom_in,
+            'zoom_out': self.zoom_out
         }
     
     def on_window_resize(self, event):
@@ -519,6 +521,45 @@ class VisualizerWindow:
                 print("Visualization toggles updated - canvas redrawn")
         except Exception as e:
             print(f"Error in visualization toggle callback: {e}")
+    
+    def zoom_in(self):
+        """Increase the pygame scale factor by 10%"""
+        try:
+            import config
+            new_scale = config.SCALE_FACTOR * 1.1
+            config.SCALE_FACTOR = new_scale
+            
+            # Re-render the current frame with new scale factor
+            if self.distances and len(self.distances) == 361:
+                self.render_frame()
+            
+            print(f"Zoomed in - Scale factor: {config.SCALE_FACTOR:.4f}")
+            
+        except Exception as e:
+            print(f"Error zooming in: {e}")
+            messagebox.showerror("Zoom Error", f"Error zooming in:\n{str(e)}")
+    
+    def zoom_out(self):
+        """Decrease the pygame scale factor by 10%"""
+        try:
+            import config
+            new_scale = config.SCALE_FACTOR * 0.9
+            
+            # Prevent scale factor from becoming too small
+            if new_scale < 0.01:
+                new_scale = 0.01
+                
+            config.SCALE_FACTOR = new_scale
+            
+            # Re-render the current frame with new scale factor
+            if self.distances and len(self.distances) == 361:
+                self.render_frame()
+            
+            print(f"Zoomed out - Scale factor: {config.SCALE_FACTOR:.4f}")
+            
+        except Exception as e:
+            print(f"Error zooming out: {e}")
+            messagebox.showerror("Zoom Error", f"Error zooming out:\n{str(e)}")
     
     def undo_last_change(self):
         """Undo the last change made"""

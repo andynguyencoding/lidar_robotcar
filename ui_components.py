@@ -282,6 +282,14 @@ class UIManager:
         tk.Checkbutton(vis_toggles_frame, text="Fwd Dir", variable=self.show_forward_dir,
                       command=self.callbacks.get('on_visualization_toggle'), width=8, fg='blue').pack(side='left', padx=(0, 5))
         
+        # Add zoom control buttons on the right side
+        zoom_frame = ttk.Frame(vis_toggles_frame)
+        zoom_frame.pack(side='right', padx=(5, 0))
+        
+        ttk.Label(zoom_frame, text="Zoom:", font=('Arial', 8)).pack(side='left', padx=(0, 3))
+        ttk.Button(zoom_frame, text="−", command=self.callbacks.get('zoom_out'), width=3).pack(side='left', padx=(0, 2))
+        ttk.Button(zoom_frame, text="+", command=self.callbacks.get('zoom_in'), width=3).pack(side='left')
+        
         # Pygame frame
         self.pygame_frame = tk.Frame(parent, width=self.current_canvas_size, 
                                     height=self.current_canvas_size, bg='lightgray')
