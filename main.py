@@ -102,8 +102,8 @@ def calculate_scale_factor(data_manager, sample_size=10):
     
     print("Analyzing data to determine optimal scale factor...")
     
-    # Reset to beginning to sample from start
-    data_manager._pointer = 0
+    # Reset to beginning to sample from start (respecting data start line for header detection)
+    data_manager._pointer = data_manager._data_start_line
     data_manager._read_pos = -1
     
     while data_manager.has_next() and sample_count < sample_size:
@@ -119,8 +119,8 @@ def calculate_scale_factor(data_manager, sample_size=10):
         data_manager.next()
         sample_count += 1
     
-    # Reset data manager to beginning
-    data_manager._pointer = 0
+    # Reset data manager to beginning (respecting data start line)
+    data_manager._pointer = data_manager._data_start_line
     data_manager._read_pos = -1
     
     if valid_distances:

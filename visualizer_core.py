@@ -105,9 +105,11 @@ class VisualizerWindow:
     def load_initial_frame(self):
         """Load the initial frame data from the data manager"""
         try:
-            # Ensure data manager starts at first frame
+            # Ensure data manager starts at first data frame (skip header if present)
             if hasattr(self.data_manager, '_pointer'):
-                self.data_manager._pointer = 0
+                # Start from the data start line (0 if no header, 1 if header present)
+                start_line = getattr(self.data_manager, '_data_start_line', 0)
+                self.data_manager._pointer = start_line
                 self.data_manager._read_pos = -1  # Force reading of first frame
             
             # Get the first frame data

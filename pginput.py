@@ -91,7 +91,12 @@ class DataManager(Observer):
         self.in_file = in_file  # Store the input file path for saving
         self.infile = open(in_file, 'r')
         self.lines = self.infile.readlines()
-        self._pointer = 0
+        
+        # Detect and skip header if present
+        self._header_detected = self._detect_header()
+        self._data_start_line = 1 if self._header_detected else 0
+        
+        self._pointer = self._data_start_line  # Start from first data line
         self._read_pos = -1
         self.outfile = open(out_file, 'w', newline='')
         self.writer = csv.writer(self.outfile)
@@ -104,6 +109,59 @@ class DataManager(Observer):
         # Modified frames tracking
         self._modified_frames = []  # List of frame indices that have been modified
         self._modified_pointer = -1  # Pointer for navigating through modified frames
+        
+        if self._header_detected:
+            print(f"Header detected in {in_file}, skipping first line")
+    
+    def _detect_header(self):
+        """Detect if the file has a header row"""
+        try:
+            if not self.lines:
+                return False
+                
+            first_line = self.lines[0].strip()
+            if not first_line:
+                return False
+            
+            # Split the first line
+            data = first_line.split(',')
+            
+            # Import LIDAR_RESOLUTION from config
+            from config import LIDAR_RESOLUTION
+            
+            # For our lidar data format, we expect exactly 361 columns (360 lidar + 1 angular velocity)
+            if len(data) != LIDAR_RESOLUTION + 1:
+                return False  # Not the expected format
+            
+            # Check if first line contains mostly non-numeric data (likely headers)
+            numeric_count = 0
+            non_numeric_items = []
+            for item in data:
+                try:
+                    float(item)
+                    numeric_count += 1
+                except (ValueError, TypeError):
+                    non_numeric_items.append(item.strip().lower())
+            
+            # If less than 80% of values are numeric, likely a header
+            numeric_percentage = (numeric_count / len(data)) * 100
+            if numeric_percentage < 80:
+                return True
+            
+            # Additional check: if first line has typical header words AND multiple non-numeric fields
+            # This prevents false positives from data files with mostly numeric data but one text field
+            if len(non_numeric_items) > 1:  # More than one non-numeric field suggests headers
+                header_keywords = ['lidar', 'angle', 'distance', 'angular', 'velocity', 'x', 'y', 'theta']
+                for item in non_numeric_items:
+                    for keyword in header_keywords:
+                        if keyword in item:
+                            return True
+            
+            return False
+            
+        except Exception as e:
+            print(f"Error detecting header: {e}")
+            return False
 
     @property
     def dataframe(self):
@@ -144,10 +202,10 @@ class DataManager(Observer):
         return self._lidar_dataframe
 
     def has_prev(self):
-        return self._pointer > 0
+        return self._pointer > self._data_start_line
 
     def prev(self):
-        if self._pointer > 0:
+        if self._pointer > self._data_start_line:
             self._pointer -= 1
             # Reset read position to force re-reading of the dataframe
             self._read_pos = self._pointer - 1
@@ -155,7 +213,7 @@ class DataManager(Observer):
 
     def first(self):
         """Jump to the first frame"""
-        self._pointer = 0
+        self._pointer = self._data_start_line
         # Reset read position to force re-reading of the dataframe
         self._read_pos = -1
         return self._lidar_dataframe
