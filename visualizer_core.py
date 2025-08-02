@@ -480,68 +480,99 @@ class VisualizerWindow:
             return
             
         try:
-            # Get current frame data
-            current_line = self.data_manager.lines[self.data_manager.pointer]
-            
-            # Parse the data (expecting 360 LiDAR readings + angular velocity)
-            data_parts = current_line.strip().split(',')
-            if len(data_parts) < 361:
-                print(f"Invalid data format: expected 361 values, got {len(data_parts)}")
-                return
-            
-            # Extract LiDAR readings (first 360 values) and angular velocity (last value)
-            lidar_readings = [float(x) for x in data_parts[:360]]
-            angular_velocity = float(data_parts[360])
-            
-            # Flip the LiDAR data horizontally using your algorithm: 0↔359, 1↔358, etc.
-            flipped_lidar = [0.0] * 360
-            for i in range(360):
-                # Horizontal flip: swap left and right sides
-                flipped_index = (359 - i) % 360
-                flipped_lidar[flipped_index] = lidar_readings[i]
-            
-            # Negate the angular velocity for horizontal flip
-            flipped_angular_velocity = -angular_velocity
-            
-            # Reconstruct the data line in CSV format
-            flipped_data_strings = [str(float(x)) for x in flipped_lidar] + [str(float(flipped_angular_velocity))]
-            flipped_line = ','.join(flipped_data_strings)
-            
-            # Ensure the line ends with a newline character
-            if not flipped_line.endswith('\n'):
-                flipped_line += '\n'
-            
-            # Update the data in memory
-            self.data_manager.lines[self.data_manager.pointer] = flipped_line
-            
-            # Invalidate the dataframe cache to force re-reading the modified data
-            self.data_manager._read_pos = -1
-            
-            # Mark this frame as modified so it gets saved
-            if self.data_manager.pointer not in self.data_manager._modified_frames:
-                self.data_manager._modified_frames.append(self.data_manager.pointer)
-                self.data_manager._modified_frames.sort()
-            
-            # Mark data as changed (add asterisk to title)
-            self.mark_data_changed()
-            
-            print(f'Frame {self.data_manager.pointer} flipped horizontally (left-right mirror)')
-            print(f"Angular velocity changed from {angular_velocity:.3f} to {flipped_angular_velocity:.3f}")
-            print(f"Modified frames list: {self.data_manager._modified_frames}")
-            print(f"First few values of flipped line: {flipped_lidar[:5]}")
-            
-            self.update_status()
-            
-            # Force refresh the display
-            if hasattr(self, 'refresh_current_frame'):
-                self.refresh_current_frame()
+            # Check if "Apply to All Frames" is checked
+            if hasattr(self, 'ui_manager') and hasattr(self.ui_manager, 'flip_all_var') and self.ui_manager.flip_all_var.get():
+                self._flip_all_frames_horizontal()
             else:
-                self.render_frame()
-            
+                self._flip_single_frame_horizontal(self.data_manager.pointer)
+                
+                # For single frame operations, update UI immediately
+                # Invalidate the dataframe cache to force re-reading the modified data
+                self.data_manager._read_pos = -1
+                
+                # Mark data as changed (add asterisk to title)
+                self.mark_data_changed()
+                
+                print(f'Frame {self.data_manager.pointer} flipped horizontally (left-right mirror)')
+                
+                self.update_status()
+                
+                # Force refresh the display
+                if hasattr(self, 'refresh_current_frame'):
+                    self.refresh_current_frame()
+                else:
+                    self.render_frame()
+                
         except Exception as e:
             print(f"Error flipping frame horizontally: {e}")
             import traceback
             traceback.print_exc()
+    
+    def _flip_single_frame_horizontal(self, frame_index):
+        """Apply horizontal flip to a single frame"""
+        # Get frame data
+        current_line = self.data_manager.lines[frame_index]
+        
+        # Parse the data (expecting 360 LiDAR readings + angular velocity)
+        data_parts = current_line.strip().split(',')
+        if len(data_parts) < 361:
+            print(f"Invalid data format: expected 361 values, got {len(data_parts)}")
+            return
+        
+        # Extract LiDAR readings (first 360 values) and angular velocity (last value)
+        lidar_readings = [float(x) for x in data_parts[:360]]
+        angular_velocity = float(data_parts[360])
+        
+        # Flip the LiDAR data horizontally using your algorithm: 0↔359, 1↔358, etc.
+        flipped_lidar = [0.0] * 360
+        for i in range(360):
+            # Horizontal flip: swap left and right sides
+            flipped_index = (359 - i) % 360
+            flipped_lidar[flipped_index] = lidar_readings[i]
+        
+        # Negate the angular velocity for horizontal flip
+        flipped_angular_velocity = -angular_velocity
+        
+        # Reconstruct the data line in CSV format
+        flipped_data_strings = [str(float(x)) for x in flipped_lidar] + [str(float(flipped_angular_velocity))]
+        flipped_line = ','.join(flipped_data_strings)
+        
+        # Ensure the line ends with a newline character
+        if not flipped_line.endswith('\n'):
+            flipped_line += '\n'
+        
+        # Update the data in memory
+        self.data_manager.lines[frame_index] = flipped_line
+        
+        # Mark this frame as modified so it gets saved
+        if frame_index not in self.data_manager._modified_frames:
+            self.data_manager._modified_frames.append(frame_index)
+            self.data_manager._modified_frames.sort()
+    
+    def _flip_all_frames_horizontal(self):
+        """Apply horizontal flip to all frames"""
+        total_frames = len(self.data_manager.lines)
+        print(f"Applying horizontal flip to all {total_frames} frames...")
+        
+        for frame_index in range(total_frames):
+            self._flip_single_frame_horizontal(frame_index)
+        
+        # Invalidate the dataframe cache to force re-reading the modified data
+        self.data_manager._read_pos = -1
+        
+        # Mark data as changed (add asterisk to title)
+        self.mark_data_changed()
+        
+        print(f'All {total_frames} frames flipped horizontally')
+        print(f"Modified frames list: {len(self.data_manager._modified_frames)} frames")
+        
+        self.update_status()
+        
+        # Force refresh the display
+        if hasattr(self, 'refresh_current_frame'):
+            self.refresh_current_frame()
+        else:
+            self.render_frame()
     
     def flip_vertical(self):
         """Flip the current frame data vertically (forward-backward mirror)"""
@@ -550,68 +581,99 @@ class VisualizerWindow:
             return
             
         try:
-            # Get current frame data
-            current_line = self.data_manager.lines[self.data_manager.pointer]
-            
-            # Parse the data (expecting 360 LiDAR readings + angular velocity)
-            data_parts = current_line.strip().split(',')
-            if len(data_parts) < 361:
-                print(f"Invalid data format: expected 361 values, got {len(data_parts)}")
-                return
-            
-            # Extract LiDAR readings (first 360 values) and angular velocity (last value)
-            lidar_readings = [float(x) for x in data_parts[:360]]
-            angular_velocity = float(data_parts[360])
-            
-            # Flip the LiDAR data vertically: forward↔backward
-            flipped_lidar = [0.0] * 360
-            for i in range(360):
-                # Vertical flip: 0°↔180°, 90° stays 90°, 270° stays 270°
-                flipped_index = (180 - i) % 360
-                flipped_lidar[flipped_index] = lidar_readings[i]
-            
-            # Keep the angular velocity the same for vertical flip (no left-right change)
-            flipped_angular_velocity = angular_velocity
-            
-            # Reconstruct the data line in CSV format
-            flipped_data_strings = [str(float(x)) for x in flipped_lidar] + [str(float(flipped_angular_velocity))]
-            flipped_line = ','.join(flipped_data_strings)
-            
-            # Ensure the line ends with a newline character
-            if not flipped_line.endswith('\n'):
-                flipped_line += '\n'
-            
-            # Update the data in memory
-            self.data_manager.lines[self.data_manager.pointer] = flipped_line
-            
-            # Invalidate the dataframe cache to force re-reading the modified data
-            self.data_manager._read_pos = -1
-            
-            # Mark this frame as modified so it gets saved
-            if self.data_manager.pointer not in self.data_manager._modified_frames:
-                self.data_manager._modified_frames.append(self.data_manager.pointer)
-                self.data_manager._modified_frames.sort()
-            
-            # Mark data as changed (add asterisk to title)
-            self.mark_data_changed()
-            
-            print(f'Frame {self.data_manager.pointer} flipped vertically (forward-backward mirror)')
-            print(f"Angular velocity unchanged: {angular_velocity:.3f}")
-            print(f"Modified frames list: {self.data_manager._modified_frames}")
-            print(f"First few values of flipped line: {flipped_lidar[:5]}")
-            
-            self.update_status()
-            
-            # Force refresh the display
-            if hasattr(self, 'refresh_current_frame'):
-                self.refresh_current_frame()
+            # Check if "Apply to All Frames" is checked
+            if hasattr(self, 'ui_manager') and hasattr(self.ui_manager, 'flip_all_var') and self.ui_manager.flip_all_var.get():
+                self._flip_all_frames_vertical()
             else:
-                self.render_frame()
-            
+                self._flip_single_frame_vertical(self.data_manager.pointer)
+                
+                # For single frame operations, update UI immediately
+                # Invalidate the dataframe cache to force re-reading the modified data
+                self.data_manager._read_pos = -1
+                
+                # Mark data as changed (add asterisk to title)
+                self.mark_data_changed()
+                
+                print(f'Frame {self.data_manager.pointer} flipped vertically (forward-backward mirror)')
+                
+                self.update_status()
+                
+                # Force refresh the display
+                if hasattr(self, 'refresh_current_frame'):
+                    self.refresh_current_frame()
+                else:
+                    self.render_frame()
+                    
         except Exception as e:
             print(f"Error flipping frame vertically: {e}")
             import traceback
             traceback.print_exc()
+    
+    def _flip_single_frame_vertical(self, frame_index):
+        """Apply vertical flip to a single frame"""
+        # Get frame data
+        current_line = self.data_manager.lines[frame_index]
+        
+        # Parse the data (expecting 360 LiDAR readings + angular velocity)
+        data_parts = current_line.strip().split(',')
+        if len(data_parts) < 361:
+            print(f"Invalid data format: expected 361 values, got {len(data_parts)}")
+            return
+        
+        # Extract LiDAR readings (first 360 values) and angular velocity (last value)
+        lidar_readings = [float(x) for x in data_parts[:360]]
+        angular_velocity = float(data_parts[360])
+        
+        # Flip the LiDAR data vertically: forward↔backward
+        flipped_lidar = [0.0] * 360
+        for i in range(360):
+            # Vertical flip: 0°↔180°, 90° stays 90°, 270° stays 270°
+            flipped_index = (180 - i) % 360
+            flipped_lidar[flipped_index] = lidar_readings[i]
+        
+        # Keep the angular velocity the same for vertical flip (no left-right change)
+        flipped_angular_velocity = angular_velocity
+        
+        # Reconstruct the data line in CSV format
+        flipped_data_strings = [str(float(x)) for x in flipped_lidar] + [str(float(flipped_angular_velocity))]
+        flipped_line = ','.join(flipped_data_strings)
+        
+        # Ensure the line ends with a newline character
+        if not flipped_line.endswith('\n'):
+            flipped_line += '\n'
+        
+        # Update the data in memory
+        self.data_manager.lines[frame_index] = flipped_line
+        
+        # Mark this frame as modified so it gets saved
+        if frame_index not in self.data_manager._modified_frames:
+            self.data_manager._modified_frames.append(frame_index)
+            self.data_manager._modified_frames.sort()
+    
+    def _flip_all_frames_vertical(self):
+        """Apply vertical flip to all frames"""
+        total_frames = len(self.data_manager.lines)
+        print(f"Applying vertical flip to all {total_frames} frames...")
+        
+        for frame_index in range(total_frames):
+            self._flip_single_frame_vertical(frame_index)
+        
+        # Invalidate the dataframe cache to force re-reading the modified data
+        self.data_manager._read_pos = -1
+        
+        # Mark data as changed (add asterisk to title)
+        self.mark_data_changed()
+        
+        print(f'All {total_frames} frames flipped vertically')
+        print(f"Modified frames list: {len(self.data_manager._modified_frames)} frames")
+        
+        self.update_status()
+        
+        # Force refresh the display
+        if hasattr(self, 'refresh_current_frame'):
+            self.refresh_current_frame()
+        else:
+            self.render_frame()
     
     def quit_visualizer(self):
         """Quit the visualizer"""

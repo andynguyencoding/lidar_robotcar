@@ -134,6 +134,12 @@ class UIManager:
         ttk.Button(button_frame, text="Flip V", 
                   command=self.callbacks.get('flip_vertical'), width=8).pack(side='left', padx=(0, 5))
         
+        # Checkbox for "Apply to All Frames"
+        self.flip_all_var = tk.BooleanVar()
+        self.flip_all_checkbox = ttk.Checkbutton(button_frame, text="All", 
+                                               variable=self.flip_all_var, width=4)
+        self.flip_all_checkbox.pack(side='left', padx=(0, 5))
+        
         # Frame input row
         frame_input_frame = ttk.Frame(controls_panel)
         frame_input_frame.pack(fill='x', pady=(5, 0))
