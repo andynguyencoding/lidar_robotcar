@@ -71,6 +71,7 @@ class UIManager:
         self.pred_turn_var = tk.StringVar()
         self.linear_var = tk.StringVar()
         self.status_var = tk.StringVar()
+        self.status_var.set("Ready")  # Set initial status
         self.frame_info_var = tk.StringVar()
         self.modified_info_var = tk.StringVar()
         
@@ -87,10 +88,10 @@ class UIManager:
         main_frame = ttk.Frame(self.root)
         main_frame.pack(fill='both', expand=True, padx=10, pady=10)
         
-        # Setup control panels
+        # Setup control panels - status panel must be packed first when using side='bottom'
         self.setup_controls_panel(main_frame)
-        self.setup_status_panel(main_frame)
-        self.setup_content_panel(main_frame)
+        self.setup_status_panel(main_frame)  # Pack bottom elements first
+        self.setup_content_panel(main_frame)  # Content expands in remaining space
         
         # Initialize display values
         self.frame_var.set("1")
@@ -176,15 +177,19 @@ class UIManager:
     
     def setup_status_panel(self, parent):
         """Setup the status panel"""
-        status_frame = ttk.LabelFrame(parent, text="Status", padding=3)
-        status_frame.pack(fill='x', pady=(0, 5))
+        # Create a minimal status frame at the bottom
+        status_frame = ttk.Frame(parent)
+        status_frame.pack(fill='x', side='bottom', pady=(5, 0))
         
-        ttk.Label(status_frame, textvariable=self.status_var, 
-                 font=('Courier', 9), wraplength=800).pack()
+        # Create the status label - minimal styling
+        status_label = ttk.Label(status_frame, textvariable=self.status_var, 
+                 font=('TkDefaultFont', 9), wraplength=800, anchor='e', justify='right')
+        status_label.pack(fill='x')
     
     def setup_content_panel(self, parent):
         """Setup the main content panel"""
         content_frame = ttk.Frame(parent)
+        # Don't expand vertically to leave room for status panel
         content_frame.pack(fill='both', expand=True, pady=(0, 5))
         
         # Left sidebar - input controls
@@ -303,11 +308,6 @@ class UIManager:
         frames_count_entry.pack(side='left', padx=(5, 10))
         
         ttk.Button(frames_input_frame, text="Add", command=self.callbacks.get('add_augmented_frames'), width=6).pack(side='left')
-        
-        # Movement step info
-        ttk.Label(augment_panel, text="💡 Configure step size in File > Preferences", 
-                 font=('Arial', 7), foreground='gray', 
-                 wraplength=140).pack(anchor='w', pady=(5, 0), fill='x')
         
         # Linear velocity
         ttk.Label(input_panel, text="Linear Vel:", 

@@ -1968,7 +1968,7 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
         """Show preferences dialog"""
         import tkinter as tk
         from tkinter import ttk, messagebox
-        from config import AUGMENTATION_MOVEMENT_STEP, AUGMENTATION_UNIT
+        from config import AUGMENTATION_UNIT
         
         # Create popup window
         popup = tk.Toplevel(self.root)
@@ -2043,66 +2043,6 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
         
         # Bind Enter and Escape keys
         unit_combo.bind('<Return>', lambda e: apply_preferences())
-        popup.bind('<Escape>', lambda e: cancel_dialog())
-        title_label = ttk.Label(main_frame, text="Preferences", 
-                               font=('Arial', 12, 'bold'))
-        title_label.pack(pady=(0, 15))
-        
-        # Movement step configuration
-        step_frame = ttk.Frame(main_frame)
-        step_frame.pack(fill='x', pady=(0, 20))
-        
-        ttk.Label(step_frame, text="Augmentation Movement Step (meters):", 
-                 font=('Arial', 10)).pack(anchor='w')
-        step_var = tk.StringVar(value=str(AUGMENTATION_MOVEMENT_STEP))
-        step_entry = ttk.Entry(step_frame, textvariable=step_var, 
-                              font=('Courier', 10), width=15)
-        step_entry.pack(anchor='w', pady=(5, 0))
-        step_entry.focus_set()
-        
-        # Current value info
-        info_text = f"Current: {AUGMENTATION_MOVEMENT_STEP} meters"
-        info_label = ttk.Label(main_frame, text=info_text, 
-                              font=('Arial', 8), foreground='blue')
-        info_label.pack(pady=(0, 15))
-        
-        # Button frame
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(pady=(10, 0))
-        
-        def apply_preferences():
-            """Apply the new preferences"""
-            try:
-                new_step = float(step_var.get())
-                
-                if new_step <= 0 or new_step > 10:
-                    messagebox.showerror("Invalid Value", 
-                                       "Movement step must be between 0 and 10 meters")
-                    return
-                
-                # Update config module
-                import config
-                config.AUGMENTATION_MOVEMENT_STEP = new_step
-                
-                popup.destroy()
-                print(f"Movement step updated to: {new_step} meters")
-                
-            except ValueError:
-                messagebox.showerror("Invalid Value", 
-                                   "Please enter a valid numeric value for movement step")
-        
-        def cancel_dialog():
-            """Cancel the dialog"""
-            popup.destroy()
-        
-        # OK and Cancel buttons
-        ttk.Button(button_frame, text="OK", command=apply_preferences, 
-                  width=10).pack(side='left', padx=(0, 10))
-        ttk.Button(button_frame, text="Cancel", command=cancel_dialog, 
-                  width=10).pack(side='left')
-        
-        # Bind Enter and Escape keys
-        step_entry.bind('<Return>', lambda e: apply_preferences())
         popup.bind('<Escape>', lambda e: cancel_dialog())
     
     # Augmentation methods - Rotation only

@@ -250,15 +250,6 @@ class VisualizerWindow:
                                    wraplength=800)  # Allow text to wrap at 800 pixels
         shortcuts_label.pack(anchor='w')
         
-        # Status display - make it more compact
-        status_frame = ttk.LabelFrame(main_frame, text="Status", padding=3)
-        status_frame.pack(fill='x', pady=(0, 5))
-        
-        self.status_var = tk.StringVar()
-        self.status_var.set(f"Data: {os.path.basename(self.config['data_file'])} | Mode: {'INSPECT' if self.inspect_mode else 'CONTINUOUS'} | Data: {'AUGMENTED' if self.augmented_mode else 'REAL'}")
-        ttk.Label(status_frame, textvariable=self.status_var, 
-                 font=('Courier', 9), wraplength=800).pack()
-        
         # Create horizontal layout for main content
         content_frame = ttk.Frame(main_frame)
         content_frame.pack(fill='both', expand=True, pady=(0, 5))
@@ -392,11 +383,6 @@ class VisualizerWindow:
         
         ttk.Button(frames_input_frame, text="Add", command=self.add_augmented_frames, width=6).pack(side='left')
         
-        # Movement step info
-        ttk.Label(augment_panel, text="💡 Configure step size in File > Preferences", 
-                 font=('Arial', 7), foreground='gray', 
-                 wraplength=140).pack(anchor='w', pady=(5, 0), fill='x')
-        
         # Resize instruction in input panel
         resize_label = ttk.Label(input_panel, 
                                 text="🔧 Resize window to scale visualizer", 
@@ -438,6 +424,15 @@ class VisualizerWindow:
         # Create a canvas widget for pygame to render into
         self.canvas = tk.Canvas(self.pygame_frame, width=self.current_canvas_size, height=self.current_canvas_size, bg='white')
         self.canvas.pack(expand=True)
+        
+        # Status display at the bottom - minimal and compact
+        status_frame = ttk.Frame(main_frame)
+        status_frame.pack(fill='x', side='bottom', pady=(5, 0))
+        
+        self.status_var = tk.StringVar()
+        self.status_var.set(f"Data: {os.path.basename(self.config['data_file'])} | Mode: {'INSPECT' if self.inspect_mode else 'CONTINUOUS'} | Data: {'AUGMENTED' if self.augmented_mode else 'REAL'}")
+        ttk.Label(status_frame, textvariable=self.status_var, 
+                 font=('TkDefaultFont', 9), wraplength=800, anchor='e', justify='right').pack(fill='x')
         
         # Initialize the button states after setup
         self.update_button_states()
@@ -2639,7 +2634,7 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
     
     def show_preferences_dialog(self):
         """Show preferences dialog"""
-        from config import AUGMENTATION_MOVEMENT_STEP, AUGMENTATION_UNIT
+        from config import AUGMENTATION_UNIT
         
         # Create popup window
         popup = tk.Toplevel(self.root)
