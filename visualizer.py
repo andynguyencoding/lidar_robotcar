@@ -283,6 +283,28 @@ class VisualizerWindow:
                                         command=self.replace_with_previous, width=18)
         self.replace_button.pack(pady=(0, 3), fill='x')
         
+        # Duplicate frame section
+        duplicate_frame = ttk.Frame(input_panel)
+        duplicate_frame.pack(pady=(5, 3), fill='x')
+        
+        ttk.Label(duplicate_frame, text="Duplicate Frame:", 
+                 font=('Arial', 9, 'bold'), foreground='purple').pack(anchor='w')
+        
+        duplicate_controls = ttk.Frame(duplicate_frame)
+        duplicate_controls.pack(fill='x', pady=(2, 0))
+        
+        # Frame count input for duplication
+        ttk.Label(duplicate_controls, text="Count:", font=('Arial', 8)).pack(side='left')
+        self.duplicate_count_var = tk.StringVar(value="1")
+        duplicate_count_entry = ttk.Entry(duplicate_controls, textvariable=self.duplicate_count_var, 
+                                         width=5, font=('Courier', 9))
+        duplicate_count_entry.pack(side='left', padx=(5, 5))
+        
+        # Duplicate button
+        duplicate_button = ttk.Button(duplicate_controls, text="Dup.", 
+                                     command=self.duplicate_current_frame, width=10)
+        duplicate_button.pack(side='right')
+        
         # Undo instruction for replace
         ttk.Label(input_panel, text="💡 Press U for undo", 
                  font=('Arial', 7), foreground='darkgreen', 
@@ -343,6 +365,20 @@ class VisualizerWindow:
         
         ttk.Button(rotation_frame, text="↺ CCW", command=self.rotate_ccw, width=8).pack(side='left', padx=(0, 5))
         ttk.Button(rotation_frame, text="CW ↻", command=self.rotate_cw, width=8).pack(side='left')
+        
+        # Add Augmented Frames section
+        ttk.Label(augment_panel, text="Add Frames:", 
+                 font=('Arial', 9, 'bold'), foreground='darkblue').pack(anchor='w', pady=(8, 2))
+        
+        frames_input_frame = ttk.Frame(augment_panel)
+        frames_input_frame.pack(fill='x', pady=(0, 5))
+        
+        ttk.Label(frames_input_frame, text="Count:", font=('Arial', 8)).pack(side='left')
+        self.frames_count_var = tk.StringVar(value="1")
+        frames_count_entry = ttk.Entry(frames_input_frame, textvariable=self.frames_count_var, width=5, font=('Courier', 9))
+        frames_count_entry.pack(side='left', padx=(5, 10))
+        
+        ttk.Button(frames_input_frame, text="Add", command=self.add_augmented_frames, width=6).pack(side='left')
         
         # Movement step info
         ttk.Label(augment_panel, text="💡 Configure step size in File > Preferences", 
@@ -1174,7 +1210,7 @@ class VisualizerWindow:
                 return
             
             # Check if there are any modifications to save
-            if not self.data_manager.modified_frames:
+            if not self.data_manager.has_changes_to_save():
                 messagebox.showinfo("Info", "No modifications to save")
                 return
             
@@ -2496,6 +2532,98 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
             
         except Exception as e:
             print(f"Error rotating counter-clockwise: {e}")
+    
+    def add_augmented_frames(self):
+        """Add augmented frames based on current frame after the current position"""
+        try:
+            if not hasattr(self, 'data_manager') or not self.data_manager:
+                print("No data manager available")
+                return
+                
+            # Get the number of frames to add from UI
+            try:
+                frame_count = int(self.frames_count_var.get())
+                if frame_count <= 0:
+                    print("Frame count must be greater than 0")
+                    return
+            except (ValueError, AttributeError):
+                print("Invalid frame count. Please enter a valid number.")
+                return
+            
+            # Get current frame data
+            current_line = self.data_manager.lines[self.data_manager.pointer]
+            
+            # Insert augmented frames after current position
+            insert_position = self.data_manager.pointer + 1
+            new_lines = []
+            
+            for i in range(frame_count):
+                # Create a copy of the current frame for augmentation
+                new_lines.append(current_line)
+            
+            # Insert the new frames into the data
+            self.data_manager.lines[insert_position:insert_position] = new_lines
+            
+            # Mark that augmented frames were added
+            self.data_manager.mark_augmented_frames_added()
+            
+            # Update total frames count
+            total_added = len(new_lines)
+            
+            print(f"Added {total_added} augmented frame(s) after position {self.data_manager.pointer}")
+            print(f"Total frames in dataset: {len(self.data_manager.lines)}")
+            
+            # Update the status display
+            self.update_status()
+            
+        except Exception as e:
+            print(f"Error adding augmented frames: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def duplicate_current_frame(self):
+        """Duplicate the current frame by the specified count after the current position"""
+        try:
+            # Get the number of duplicates to create from UI
+            try:
+                duplicate_count = int(self.duplicate_count_var.get())
+                if duplicate_count <= 0:
+                    print("Duplicate count must be greater than 0")
+                    return
+            except ValueError:
+                print("Invalid duplicate count. Please enter a valid number.")
+                return
+            
+            # Get current frame data (exact copy)
+            current_line = self.data_manager.lines[self.data_manager.pointer]
+            
+            # Insert duplicate frames after current position
+            insert_position = self.data_manager.pointer + 1
+            new_lines = []
+            
+            for i in range(duplicate_count):
+                # Create an exact copy of the current frame
+                new_lines.append(current_line)
+            
+            # Insert the duplicate frames into the data
+            self.data_manager.lines[insert_position:insert_position] = new_lines
+            
+            # Mark that frames were added (reuse the augmented frames tracking)
+            self.data_manager.mark_augmented_frames_added()
+            
+            # Update total frames count
+            total_added = len(new_lines)
+            
+            print(f"Duplicated current frame {total_added} time(s) after position {self.data_manager.pointer}")
+            print(f"Total frames in dataset: {len(self.data_manager.lines)}")
+            
+            # Update the status display
+            self.update_status()
+            
+        except Exception as e:
+            print(f"Error duplicating current frame: {e}")
+            import traceback
+            traceback.print_exc()
     
     def show_kbest_analysis(self):
         """Show the K-Best feature analysis dialog"""

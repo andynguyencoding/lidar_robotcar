@@ -220,6 +220,28 @@ class UIManager:
                                         command=self.callbacks.get('replace_with_previous'), width=18)
         self.replace_button.pack(pady=(0, 3), fill='x')
         
+        # Duplicate frame section
+        duplicate_frame = ttk.Frame(input_panel)
+        duplicate_frame.pack(pady=(5, 3), fill='x')
+        
+        ttk.Label(duplicate_frame, text="Duplicate Frame:", 
+                 font=('Arial', 9, 'bold'), foreground='purple').pack(anchor='w')
+        
+        duplicate_controls = ttk.Frame(duplicate_frame)
+        duplicate_controls.pack(fill='x', pady=(2, 0))
+        
+        # Frame count input for duplication
+        ttk.Label(duplicate_controls, text="Count:", font=('Arial', 8)).pack(side='left')
+        self.duplicate_count_var = tk.StringVar(value="1")
+        duplicate_count_entry = ttk.Entry(duplicate_controls, textvariable=self.duplicate_count_var, 
+                                         width=5, font=('Courier', 9))
+        duplicate_count_entry.pack(side='left', padx=(5, 5))
+        
+        # Duplicate button
+        duplicate_button = ttk.Button(duplicate_controls, text="Dup.", 
+                                     command=self.callbacks.get('duplicate_current_frame'), width=10)
+        duplicate_button.pack(side='right')
+        
         # Undo instruction
         ttk.Label(input_panel, text="💡 Press U for undo", 
                  font=('Arial', 7), foreground='darkgreen', 
@@ -261,6 +283,20 @@ class UIManager:
         
         ttk.Button(rotation_frame, text="↺ CCW", command=self.callbacks.get('rotate_ccw'), width=8).pack(side='left', padx=(0, 5))
         ttk.Button(rotation_frame, text="CW ↻", command=self.callbacks.get('rotate_cw'), width=8).pack(side='left')
+        
+        # Add Augmented Frames section
+        ttk.Label(augment_panel, text="Add Frames:", 
+                 font=('Arial', 9, 'bold'), foreground='darkblue').pack(anchor='w', pady=(8, 2))
+        
+        frames_input_frame = ttk.Frame(augment_panel)
+        frames_input_frame.pack(fill='x', pady=(0, 5))
+        
+        ttk.Label(frames_input_frame, text="Count:", font=('Arial', 8)).pack(side='left')
+        self.frames_count_var = tk.StringVar(value="1")
+        frames_count_entry = ttk.Entry(frames_input_frame, textvariable=self.frames_count_var, width=5, font=('Courier', 9))
+        frames_count_entry.pack(side='left', padx=(5, 10))
+        
+        ttk.Button(frames_input_frame, text="Add", command=self.callbacks.get('add_augmented_frames'), width=6).pack(side='left')
         
         # Movement step info
         ttk.Label(augment_panel, text="💡 Configure step size in File > Preferences", 

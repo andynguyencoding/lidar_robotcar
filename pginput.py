@@ -110,6 +110,9 @@ class DataManager(Observer):
         self._modified_frames = []  # List of frame indices that have been modified
         self._modified_pointer = -1  # Pointer for navigating through modified frames
         
+        # Augmented frames tracking
+        self._augmented_frames_added = False  # Flag to track if augmented frames were added
+        
         if self._header_detected:
             print(f"Header detected in {in_file}, skipping first line")
     
@@ -334,6 +337,15 @@ class DataManager(Observer):
             
         except Exception as e:
             print(f"Error updating frame from string: {e}")
+    
+    def mark_augmented_frames_added(self):
+        """Mark that augmented frames have been added to the dataset"""
+        self._augmented_frames_added = True
+        print("Marked dataset as having augmented frames added")
+    
+    def has_changes_to_save(self):
+        """Check if there are any changes (modifications or augmented frames) to save"""
+        return bool(self._modified_frames) or self._augmented_frames_added
 
     def save_to_original_file(self):
         """Save all modifications back to the original input file"""

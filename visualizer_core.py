@@ -179,7 +179,9 @@ class VisualizerWindow:
             
             # Augmentation controls - Rotation only
             'rotate_cw': self.rotate_cw,
-            'rotate_ccw': self.rotate_ccw
+            'rotate_ccw': self.rotate_ccw,
+            'add_augmented_frames': self.add_augmented_frames,
+            'duplicate_current_frame': self.duplicate_current_frame
         }
     
     def on_window_resize(self, event):
@@ -688,7 +690,7 @@ class VisualizerWindow:
                 return
             
             # Check if there are modifications to save
-            if not hasattr(self.data_manager, 'modified_frames') or not self.data_manager.modified_frames:
+            if not hasattr(self.data_manager, 'has_changes_to_save') or not self.data_manager.has_changes_to_save():
                 messagebox.showinfo("Info", "No modifications to save")
                 return
             
@@ -1872,6 +1874,102 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
             
         except Exception as e:
             print(f"Error rotating counter-clockwise: {e}")
+    
+    def add_augmented_frames(self):
+        """Add augmented frames based on current frame after the current position"""
+        try:
+            if not hasattr(self, 'data_manager') or not self.data_manager:
+                print("No data manager available")
+                return
+                
+            # Get the number of frames to add from UI
+            try:
+                frame_count = int(self.ui_manager.frames_count_var.get())
+                if frame_count <= 0:
+                    print("Frame count must be greater than 0")
+                    return
+            except (ValueError, AttributeError):
+                print("Invalid frame count. Please enter a valid number.")
+                return
+            
+            # Get current frame data
+            current_line = self.data_manager.lines[self.data_manager.pointer]
+            
+            # Insert augmented frames after current position
+            insert_position = self.data_manager.pointer + 1
+            new_lines = []
+            
+            for i in range(frame_count):
+                # Create a copy of the current frame for augmentation
+                new_lines.append(current_line)
+            
+            # Insert the new frames into the data
+            self.data_manager.lines[insert_position:insert_position] = new_lines
+            
+            # Mark that augmented frames were added
+            self.data_manager.mark_augmented_frames_added()
+            
+            # Update total frames count
+            total_added = len(new_lines)
+            
+            print(f"Added {total_added} augmented frame(s) after position {self.data_manager.pointer}")
+            print(f"Total frames in dataset: {len(self.data_manager.lines)}")
+            
+            # Update the status display
+            self.update_status()
+            
+        except Exception as e:
+            print(f"Error adding augmented frames: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def duplicate_current_frame(self):
+        """Duplicate the current frame by the specified count after the current position"""
+        try:
+            if not hasattr(self, 'data_manager') or not self.data_manager:
+                print("No data manager available")
+                return
+                
+            # Get the number of duplicates to create from UI
+            try:
+                duplicate_count = int(self.ui_manager.duplicate_count_var.get())
+                if duplicate_count <= 0:
+                    print("Duplicate count must be greater than 0")
+                    return
+            except (ValueError, AttributeError):
+                print("Invalid duplicate count. Please enter a valid number.")
+                return
+            
+            # Get current frame data (exact copy)
+            current_line = self.data_manager.lines[self.data_manager.pointer]
+            
+            # Insert duplicate frames after current position
+            insert_position = self.data_manager.pointer + 1
+            new_lines = []
+            
+            for i in range(duplicate_count):
+                # Create an exact copy of the current frame
+                new_lines.append(current_line)
+            
+            # Insert the duplicate frames into the data
+            self.data_manager.lines[insert_position:insert_position] = new_lines
+            
+            # Mark that frames were added (reuse the augmented frames tracking)
+            self.data_manager.mark_augmented_frames_added()
+            
+            # Update total frames count
+            total_added = len(new_lines)
+            
+            print(f"Duplicated current frame {total_added} time(s) after position {self.data_manager.pointer}")
+            print(f"Total frames in dataset: {len(self.data_manager.lines)}")
+            
+            # Update the status display
+            self.update_status()
+            
+        except Exception as e:
+            print(f"Error duplicating current frame: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _apply_rotation_transformation(self, angle_degrees):
         """Apply rotation transformation by shifting array indices"""
