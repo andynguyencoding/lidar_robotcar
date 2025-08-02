@@ -51,13 +51,19 @@ class VisualizerWindow:
         self.max_recent_files = 5
         self.recent_files_path = "visualizer_recent_files.txt"
         
+        # Track unsaved changes
+        self.has_unsaved_changes = False
+        
         # Initialize data manager
         self.data_manager = DataManager(config['data_file'], 'data/run2/_out.txt', False)
         calculate_scale_factor(self.data_manager)
         
+        # Store original title before adding asterisk
+        self.original_title = f"Lidar Visualizer - {os.path.basename(config['data_file'])}"
+        
         # Create main tkinter window
         self.root = tk.Tk()
-        self.root.title(f"Lidar Visualizer - {os.path.basename(config['data_file'])}")
+        self.root.title(self.original_title)
         
         # Visualization toggle variables (must be created after root window)
         self.show_current_vel = tk.BooleanVar(value=True)   # Current velocity (green line)
@@ -942,6 +948,9 @@ class VisualizerWindow:
                     
                     print(f"Undone change: Frame {frame_index}, restored to {old_value} (was {new_value})")
                     
+                    # Mark data as changed since we modified it
+                    self.mark_data_changed()
+                    
                     # Update UI
                     self.update_inputs()
                     self.render_frame()
@@ -1172,6 +1181,9 @@ class VisualizerWindow:
                 self.data_manager._modified_frames.append(self.data_manager.pointer)
                 self.data_manager._modified_frames.sort()
             
+            # Mark data as changed (add asterisk to title)
+            self.mark_data_changed()
+            
             print(f'Frame {self.data_manager.pointer} flipped horizontally (left-right mirror)')
             print(f"Angular velocity changed from {angular_velocity:.3f} to {flipped_angular_velocity:.3f}")
             print(f"Modified frames list: {self.data_manager._modified_frames}")
@@ -1235,6 +1247,9 @@ class VisualizerWindow:
             if self.data_manager.pointer not in self.data_manager._modified_frames:
                 self.data_manager._modified_frames.append(self.data_manager.pointer)
                 self.data_manager._modified_frames.sort()
+            
+            # Mark data as changed (add asterisk to title)
+            self.mark_data_changed()
             
             print(f'Frame {self.data_manager.pointer} flipped vertically (forward-backward mirror)')
             print(f"Angular velocity unchanged: {angular_velocity:.3f}")
@@ -1422,6 +1437,7 @@ class VisualizerWindow:
                     self.status_var.set(f"Saved {modified_count} modified frames to original file | Mode: {'INSPECT' if self.inspect_mode else 'CONTINUOUS'} | Data: {'AUGMENTED' if self.augmented_mode else 'REAL'}")
                     messagebox.showinfo("Success", f"Successfully saved {modified_count} modified frames back to the original input file")
                     print(f"Data saved to original file: {self.data_manager.in_file}")
+                    self.mark_data_saved()  # Mark data as saved (remove asterisk)
                 else:
                     raise Exception("Failed to save to original file")
             else:
@@ -1432,6 +1448,7 @@ class VisualizerWindow:
                 self.status_var.set(f"Data saved to {os.path.basename(out_file)} | Mode: {'INSPECT' if self.inspect_mode else 'CONTINUOUS'} | Data: {'AUGMENTED' if self.augmented_mode else 'REAL'}")
                 messagebox.showinfo("Success", f"Data saved successfully to {os.path.basename(out_file)}")
                 print(f"Data saved to: {out_file}")
+                self.mark_data_saved()  # Mark data as saved (remove asterisk)
                 
         except Exception as e:
             error_msg = f"Failed to save data: {str(e)}"
@@ -2717,6 +2734,7 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
             
             print("Rotating 1 degree clockwise")
             self._apply_rotation_transformation(-1.0)  # Negative for clockwise
+            self.mark_data_changed()  # Mark data as changed
             
         except Exception as e:
             print(f"Error rotating clockwise: {e}")
@@ -2729,6 +2747,7 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
             
             print("Rotating 1 degree counter-clockwise")
             self._apply_rotation_transformation(1.0)  # Positive for counter-clockwise
+            self.mark_data_changed()  # Mark data as changed
             
         except Exception as e:
             print(f"Error rotating counter-clockwise: {e}")
@@ -2766,6 +2785,9 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
             
             # Mark that augmented frames were added
             self.data_manager.mark_augmented_frames_added()
+            
+            # Mark data as changed
+            self.mark_data_changed()
             
             # Update total frames count
             total_added = len(new_lines)
@@ -2810,6 +2832,9 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
             
             # Mark that frames were added (reuse the augmented frames tracking)
             self.data_manager.mark_augmented_frames_added()
+            
+            # Mark data as changed
+            self.mark_data_changed()
             
             # Update total frames count
             total_added = len(new_lines)
@@ -2942,8 +2967,48 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
         
         self.on_closing()
     
+    def mark_data_changed(self):
+        """Mark that the data has unsaved changes and update window title"""
+        if not self.has_unsaved_changes:
+            self.has_unsaved_changes = True
+            self.root.title(self.original_title + " *")
+    
+    def mark_data_saved(self):
+        """Mark that the data has been saved and update window title"""
+        if self.has_unsaved_changes:
+            self.has_unsaved_changes = False
+            self.root.title(self.original_title)
+    
+    def prompt_save_before_exit(self):
+        """Prompt user to save changes before exiting"""
+        if not self.has_unsaved_changes:
+            return True  # No changes, safe to exit
+        
+        result = messagebox.askyesnocancel(
+            "Unsaved Changes",
+            "You have unsaved changes. Do you want to save before exiting?",
+            icon='warning'
+        )
+        
+        if result is True:  # Yes - save and exit
+            try:
+                self.data_manager.save_to_original_file()
+                self.mark_data_saved()
+                return True
+            except Exception as e:
+                messagebox.showerror("Save Error", f"Failed to save changes:\n{str(e)}")
+                return False
+        elif result is False:  # No - exit without saving
+            return True
+        else:  # Cancel - don't exit
+            return False
+    
     def on_closing(self):
         """Handle window closing"""
+        # Check for unsaved changes before closing
+        if not self.prompt_save_before_exit():
+            return  # User cancelled the exit
+        
         print("Closing visualizer...")
         self.running = False
         
@@ -3013,6 +3078,9 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
                         print(f"Frame {current_frame} added to modified frames list")
                     
                     print(f"Data manager updated with new turn value: {new_turn} at frame {self.data_manager._pointer}")
+                
+                # Mark data as changed
+                self.mark_data_changed()
                 
                 # Don't clear the input field - keep the value for user reference
                 print(f"Angular velocity updated to: {new_turn}")

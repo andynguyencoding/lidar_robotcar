@@ -9,7 +9,7 @@ import math
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from tkinter import ttk
+from tkinter import ttk, messagebox
 from config import DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT, LIDAR_RESOLUTION
 from ui_components import UIManager
 from frame_navigation import FrameNavigator
@@ -42,6 +42,10 @@ class VisualizerWindow:
         self.direction_ratio_max_degree = 45.0
         self.direction_ratio_max_angular = 1.0
         
+        # Track unsaved changes
+        self.has_unsaved_changes = False
+        self.original_title = f"Lidar Visualizer - {os.path.basename(config['data_file'])}"
+        
         # Initialize subsystems
         self.file_manager = FileManager()
         self.undo_system = UndoSystem()
@@ -56,7 +60,7 @@ class VisualizerWindow:
         
         # Create main tkinter window
         self.root = tk.Tk()
-        self.root.title(f"Lidar Visualizer - {os.path.basename(config['data_file'])}")
+        self.root.title(self.original_title)
         self.root.geometry(f"{DEFAULT_WINDOW_WIDTH}x{DEFAULT_WINDOW_HEIGHT}")
         self.root.resizable(True, True)
         self.root.minsize(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
@@ -518,6 +522,9 @@ class VisualizerWindow:
                 self.data_manager._modified_frames.append(self.data_manager.pointer)
                 self.data_manager._modified_frames.sort()
             
+            # Mark data as changed (add asterisk to title)
+            self.mark_data_changed()
+            
             print(f'Frame {self.data_manager.pointer} flipped horizontally (left-right mirror)')
             print(f"Angular velocity changed from {angular_velocity:.3f} to {flipped_angular_velocity:.3f}")
             print(f"Modified frames list: {self.data_manager._modified_frames}")
@@ -585,6 +592,9 @@ class VisualizerWindow:
                 self.data_manager._modified_frames.append(self.data_manager.pointer)
                 self.data_manager._modified_frames.sort()
             
+            # Mark data as changed (add asterisk to title)
+            self.mark_data_changed()
+            
             print(f'Frame {self.data_manager.pointer} flipped vertically (forward-backward mirror)')
             print(f"Angular velocity unchanged: {angular_velocity:.3f}")
             print(f"Modified frames list: {self.data_manager._modified_frames}")
@@ -606,6 +616,42 @@ class VisualizerWindow:
     def quit_visualizer(self):
         """Quit the visualizer"""
         self.on_closing()
+    
+    def mark_data_changed(self):
+        """Mark that the data has unsaved changes and update window title"""
+        if not self.has_unsaved_changes:
+            self.has_unsaved_changes = True
+            self.root.title(self.original_title + " *")
+    
+    def mark_data_saved(self):
+        """Mark that the data has been saved and update window title"""
+        if self.has_unsaved_changes:
+            self.has_unsaved_changes = False
+            self.root.title(self.original_title)
+    
+    def prompt_save_before_exit(self):
+        """Prompt user to save changes before exiting"""
+        if not self.has_unsaved_changes:
+            return True  # No changes, safe to exit
+        
+        result = messagebox.askyesnocancel(
+            "Unsaved Changes",
+            "You have unsaved changes. Do you want to save before exiting?",
+            icon='warning'
+        )
+        
+        if result is True:  # Yes - save and exit
+            try:
+                self.data_manager.save_to_original_file()
+                self.mark_data_saved()
+                return True
+            except Exception as e:
+                messagebox.showerror("Save Error", f"Failed to save changes:\n{str(e)}")
+                return False
+        elif result is False:  # No - exit without saving
+            return True
+        else:  # Cancel - don't exit
+            return False
     
     # Input handling
     def on_angular_velocity_input(self, event):
@@ -640,6 +686,9 @@ class VisualizerWindow:
                     self.render_frame()
                     self.update_inputs()
                     self.update_button_states()
+                    
+                    # Mark data as changed
+                    self.mark_data_changed()
                     
                     print(f"Updated angular velocity to {new_value} at frame {current_frame}")
                 
@@ -813,6 +862,9 @@ class VisualizerWindow:
                 
                 print(f"Undone change: Frame {frame_index}, restored to {old_value} (was {new_value})")
                 
+                # Mark data as changed since we modified it
+                self.mark_data_changed()
+                
                 # Update UI
                 self.update_inputs()
                 self.render_frame()
@@ -907,6 +959,7 @@ class VisualizerWindow:
             if hasattr(self.data_manager, 'save_to_original_file'):
                 success = self.data_manager.save_to_original_file()
                 if success:
+                    self.mark_data_saved()  # Remove asterisk from title
                     messagebox.showinfo("Success", f"Data saved successfully to {os.path.basename(self.config['data_file'])}")
                 else:
                     messagebox.showerror("Error", "Failed to save data")
@@ -2001,6 +2054,9 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
             # Update the modified pointer to point to the current frame
             self.data_manager._modified_pointer = self.data_manager._modified_frames.index(current_frame)
             print(f"Frame {current_frame} added to modified frames list")
+        
+        # Mark data as changed (add asterisk to title)
+        self.mark_data_changed()
     
     def _apply_rotation_transformation(self, angle_degrees):
         """Apply rotation transformation by shifting LiDAR data array indices
@@ -2068,6 +2124,7 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
             
             print("Rotating 1 degree clockwise")
             self._apply_rotation_transformation(-1.0)  # Negative for clockwise
+            self.mark_data_changed()  # Mark data as changed
             
         except Exception as e:
             print(f"Error rotating clockwise: {e}")
@@ -2080,6 +2137,7 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
             
             print("Rotating 1 degree counter-clockwise")
             self._apply_rotation_transformation(1.0)  # Positive for counter-clockwise
+            self.mark_data_changed()  # Mark data as changed
             
         except Exception as e:
             print(f"Error rotating counter-clockwise: {e}")
@@ -2117,6 +2175,9 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
             
             # Mark that augmented frames were added
             self.data_manager.mark_augmented_frames_added()
+            
+            # Mark data as changed
+            self.mark_data_changed()
             
             # Update total frames count
             total_added = len(new_lines)
@@ -2165,6 +2226,9 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
             
             # Mark that frames were added (reuse the augmented frames tracking)
             self.data_manager.mark_augmented_frames_added()
+            
+            # Mark data as changed
+            self.mark_data_changed()
             
             # Update total frames count
             total_added = len(new_lines)
@@ -2443,6 +2507,10 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
     def on_closing(self):
         """Handle window close event"""
         try:
+            # Check for unsaved changes before closing
+            if not self.prompt_save_before_exit():
+                return  # User cancelled the exit
+            
             self.running = False
             self.renderer.cleanup()
             self.root.quit()
