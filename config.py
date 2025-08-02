@@ -28,6 +28,10 @@ RECENT_FILES_FILENAME = "visualizer_recent_files.txt"
 # Undo System
 MAX_UNDO_STEPS = 20
 
+# Augmentation Configuration
+AUGMENTATION_MOVEMENT_STEP = 0.1  # Default movement step in meters
+AUGMENTATION_UNIT = "m"  # Default unit measurement: "m" or "mm"
+
 # Direction ratio configuration (angular velocity to degree mapping)
 DIRECTION_RATIO_MAX_DEGREE = 45.0  # Maximum degrees for visualization
 DIRECTION_RATIO_MAX_ANGULAR = 1.0  # Angular velocity value that maps to max degree

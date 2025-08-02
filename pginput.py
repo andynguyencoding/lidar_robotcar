@@ -286,6 +286,54 @@ class DataManager(Observer):
         """Clear the list of modified frames"""
         self._modified_frames.clear()
         self._modified_pointer = -1
+    
+    def backup_current_frame(self):
+        """Create a backup of the current frame for undo functionality"""
+        # This is a placeholder - actual undo functionality would need
+        # more sophisticated backup system
+        pass
+    
+    def update_current_frame(self, new_data):
+        """Update the current frame with new data"""
+        if self._pointer < len(self.lines):
+            # Convert the new data to a comma-separated line
+            new_line = ','.join(str(x) for x in new_data) + '\n'
+            
+            # Update the lines array
+            self.lines[self._pointer] = new_line
+            
+            # Update the current dataframe
+            self._lidar_dataframe = new_data[:]
+            
+            # Mark this frame as modified
+            if self._pointer not in self._modified_frames:
+                self._modified_frames.append(self._pointer)
+                self._modified_frames.sort()  # Keep the list sorted
+                
+            print(f"Frame {self._pointer} updated and marked as modified")
+    
+    def get_current_dataframe(self):
+        """Get current dataframe - compatibility method"""
+        return self.dataframe
+    
+    def update_current_frame_from_string(self, data_string):
+        """Update current frame from a comma-separated string"""
+        try:
+            # Parse the string into data components
+            new_data = data_string.split(',')
+            
+            # Update the current dataframe
+            self._lidar_dataframe = new_data[:]
+            
+            # Mark this frame as modified
+            if self._pointer not in self._modified_frames:
+                self._modified_frames.append(self._pointer)
+                self._modified_frames.sort()  # Keep the list sorted
+                
+            print(f"Frame {self._pointer} updated from string and marked as modified")
+            
+        except Exception as e:
+            print(f"Error updating frame from string: {e}")
 
     def save_to_original_file(self):
         """Save all modifications back to the original input file"""

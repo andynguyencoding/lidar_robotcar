@@ -172,7 +172,14 @@ class VisualizerWindow:
             'show_scale_factor_dialog': self.show_scale_factor_dialog,
             'show_direction_ratio_dialog': self.show_direction_ratio_dialog,
             'zoom_in': self.zoom_in,
-            'zoom_out': self.zoom_out
+            'zoom_out': self.zoom_out,
+            
+            # Preferences
+            'show_preferences_dialog': self.show_preferences_dialog,
+            
+            # Augmentation controls - Rotation only
+            'rotate_cw': self.rotate_cw,
+            'rotate_ccw': self.rotate_ccw
         }
     
     def on_window_resize(self, event):
@@ -1630,6 +1637,287 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
         # Bind Enter and Escape keys
         popup.bind('<Return>', lambda e: apply_direction_ratio())
         popup.bind('<Escape>', lambda e: cancel_dialog())
+    
+    def show_preferences_dialog(self):
+        """Show preferences dialog"""
+        import tkinter as tk
+        from tkinter import ttk, messagebox
+        from config import AUGMENTATION_MOVEMENT_STEP, AUGMENTATION_UNIT
+        
+        # Create popup window
+        popup = tk.Toplevel(self.root)
+        popup.title("Preferences")
+        popup.geometry("450x280")
+        popup.resizable(False, False)
+        
+        # Center the popup
+        popup.transient(self.root)
+        popup.grab_set()
+        
+        # Calculate center position
+        popup.update_idletasks()
+        x = (popup.winfo_screenwidth() // 2) - (450 // 2)
+        y = (popup.winfo_screenheight() // 2) - (280 // 2)
+        popup.geometry(f"450x280+{x}+{y}")
+        
+        main_frame = ttk.Frame(popup, padding=20)
+        main_frame.pack(fill='both', expand=True)
+        
+        # Title
+        title_label = ttk.Label(main_frame, text="Preferences", 
+                               font=('Arial', 12, 'bold'))
+        title_label.pack(pady=(0, 15))
+        
+        # Unit measurement configuration
+        unit_frame = ttk.Frame(main_frame)
+        unit_frame.pack(fill='x', pady=(0, 15))
+        
+        ttk.Label(unit_frame, text="Data Unit Measurement:", 
+                 font=('Arial', 10)).pack(anchor='w')
+        unit_var = tk.StringVar(value=AUGMENTATION_UNIT)
+        unit_combo = ttk.Combobox(unit_frame, textvariable=unit_var, 
+                                 values=["m", "mm"], width=10, state="readonly")
+        unit_combo.pack(anchor='w', pady=(5, 0))
+        unit_combo.focus_set()
+        
+        # Current values info
+        info_text = f"Current Unit: {AUGMENTATION_UNIT}"
+        info_label = ttk.Label(main_frame, text=info_text, 
+                              font=('Arial', 8), foreground='blue')
+        info_label.pack(pady=(0, 15))
+        
+        # Button frame
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(pady=(10, 0))
+        
+        def apply_preferences():
+            """Apply the new preferences"""
+            try:
+                new_unit = unit_var.get()
+                
+                # Update config module
+                import config
+                config.AUGMENTATION_UNIT = new_unit
+                
+                popup.destroy()
+                print(f"Preferences updated - Unit: {new_unit}")
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to update preferences: {str(e)}")
+        
+        def cancel_dialog():
+            """Cancel the dialog"""
+            popup.destroy()
+        
+        # OK and Cancel buttons
+        ttk.Button(button_frame, text="OK", command=apply_preferences, 
+                  width=10).pack(side='left', padx=(0, 10))
+        ttk.Button(button_frame, text="Cancel", command=cancel_dialog, 
+                  width=10).pack(side='left')
+        
+        # Bind Enter and Escape keys
+        unit_combo.bind('<Return>', lambda e: apply_preferences())
+        popup.bind('<Escape>', lambda e: cancel_dialog())
+        title_label = ttk.Label(main_frame, text="Preferences", 
+                               font=('Arial', 12, 'bold'))
+        title_label.pack(pady=(0, 15))
+        
+        # Movement step configuration
+        step_frame = ttk.Frame(main_frame)
+        step_frame.pack(fill='x', pady=(0, 20))
+        
+        ttk.Label(step_frame, text="Augmentation Movement Step (meters):", 
+                 font=('Arial', 10)).pack(anchor='w')
+        step_var = tk.StringVar(value=str(AUGMENTATION_MOVEMENT_STEP))
+        step_entry = ttk.Entry(step_frame, textvariable=step_var, 
+                              font=('Courier', 10), width=15)
+        step_entry.pack(anchor='w', pady=(5, 0))
+        step_entry.focus_set()
+        
+        # Current value info
+        info_text = f"Current: {AUGMENTATION_MOVEMENT_STEP} meters"
+        info_label = ttk.Label(main_frame, text=info_text, 
+                              font=('Arial', 8), foreground='blue')
+        info_label.pack(pady=(0, 15))
+        
+        # Button frame
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(pady=(10, 0))
+        
+        def apply_preferences():
+            """Apply the new preferences"""
+            try:
+                new_step = float(step_var.get())
+                
+                if new_step <= 0 or new_step > 10:
+                    messagebox.showerror("Invalid Value", 
+                                       "Movement step must be between 0 and 10 meters")
+                    return
+                
+                # Update config module
+                import config
+                config.AUGMENTATION_MOVEMENT_STEP = new_step
+                
+                popup.destroy()
+                print(f"Movement step updated to: {new_step} meters")
+                
+            except ValueError:
+                messagebox.showerror("Invalid Value", 
+                                   "Please enter a valid numeric value for movement step")
+        
+        def cancel_dialog():
+            """Cancel the dialog"""
+            popup.destroy()
+        
+        # OK and Cancel buttons
+        ttk.Button(button_frame, text="OK", command=apply_preferences, 
+                  width=10).pack(side='left', padx=(0, 10))
+        ttk.Button(button_frame, text="Cancel", command=cancel_dialog, 
+                  width=10).pack(side='left')
+        
+        # Bind Enter and Escape keys
+        step_entry.bind('<Return>', lambda e: apply_preferences())
+        popup.bind('<Escape>', lambda e: cancel_dialog())
+    
+    # Augmentation methods - Rotation only
+    
+    def _mark_frame_modified(self):
+        """Mark the current frame as modified"""
+        current_frame = self.data_manager._pointer
+        if current_frame not in self.data_manager._modified_frames:
+            self.data_manager._modified_frames.append(current_frame)
+            self.data_manager._modified_frames.sort()  # Keep the list sorted
+            # Update the modified pointer to point to the current frame
+            self.data_manager._modified_pointer = self.data_manager._modified_frames.index(current_frame)
+            print(f"Frame {current_frame} added to modified frames list")
+    
+    def _apply_rotation_transformation(self, angle_degrees):
+        """Apply rotation transformation by shifting LiDAR data array indices
+        
+        Since LiDAR data is stored as 360 sequential distance values (0-359°),
+        rotation is simply shifting the array indices with wraparound.
+        
+        Args:
+            angle_degrees: rotation angle in degrees (positive = counter-clockwise, negative = clockwise)
+        """
+        try:
+            # Get current frame data (this is a list of distance values)
+            current_data = self.data_manager.dataframe
+            if not current_data:
+                raise ValueError("No current frame data available")
+            
+            # Create backup for undo functionality
+            self.data_manager.backup_current_frame()
+            
+            print(f"Rotating {angle_degrees} degrees by shifting array indices")
+            
+            # Convert string data to string for processing (keep as strings)
+            str_data = [str(value) for value in current_data]
+            
+            # Simple array shifting for rotation
+            if len(str_data) >= 361:  # Ensure we have LiDAR data + angular velocity
+                lidar_data = str_data[:-1]  # First 360 elements (exclude angular velocity)
+                angular_velocity = str_data[-1]  # Last element is angular velocity
+                
+                # Shift array by angle_degrees positions
+                # Positive angle = counter-clockwise = shift left (indices decrease)  
+                # Negative angle = clockwise = shift right (indices increase)
+                shift_amount = int(round(angle_degrees)) % 360
+                
+                # Perform the shift with wraparound
+                if shift_amount != 0:
+                    rotated_data = lidar_data[-shift_amount:] + lidar_data[:-shift_amount]
+                else:
+                    rotated_data = lidar_data[:]
+                
+                # Reconstruct the complete data with angular velocity
+                modified_data = rotated_data + [angular_velocity]
+                
+                # Update the current frame with rotated data
+                self.data_manager.update_current_frame(modified_data)
+                
+                # Mark frame as modified and refresh display
+                self._mark_frame_modified()
+                self.update_display()
+                
+                print(f"Array shifted by {shift_amount} positions for {angle_degrees}° rotation")
+            else:
+                print(f"Warning: Insufficient data length ({len(str_data)}) for rotation")
+                
+        except Exception as e:
+            print(f"Error applying rotation transformation: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def rotate_cw(self):
+        """Rotate lidar data 1 degree clockwise"""
+        try:
+            if not hasattr(self, 'data_manager') or not self.data_manager:
+                return
+            
+            print("Rotating 1 degree clockwise")
+            self._apply_rotation_transformation(-1.0)  # Negative for clockwise
+            
+        except Exception as e:
+            print(f"Error rotating clockwise: {e}")
+    
+    def rotate_ccw(self):
+        """Rotate lidar data 1 degree counter-clockwise"""
+        try:
+            if not hasattr(self, 'data_manager') or not self.data_manager:
+                return
+            
+            print("Rotating 1 degree counter-clockwise")
+            self._apply_rotation_transformation(1.0)  # Positive for counter-clockwise
+            
+        except Exception as e:
+            print(f"Error rotating counter-clockwise: {e}")
+    
+    def _apply_rotation_transformation(self, angle_degrees):
+        """Apply rotation transformation by shifting array indices"""
+        try:
+            # Get current data line
+            current_line = self.data_manager.lines[self.data_manager.pointer]
+            data_parts = current_line.strip().split(',')
+            
+            # Check if we have enough data points (expecting at least 361 elements)
+            if len(data_parts) < 361:
+                print(f"Warning: Insufficient data points for rotation ({len(data_parts)} < 361)")
+                return
+            
+            # Backup current frame before modification
+            self.data_manager.backup_current_frame()
+            
+            # Extract lidar data (first 360 elements) and angular velocity (last element)
+            lidar_data = data_parts[:360]  # First 360 elements are LiDAR readings
+            angular_velocity = data_parts[-1]  # Last element is angular velocity
+            other_data = data_parts[360:-1] if len(data_parts) > 361 else []  # Any data between LiDAR and angular velocity
+            
+            # Calculate shift amount (1 degree = 1 index for 360-degree array)
+            shift_amount = int(angle_degrees) % 360
+            
+            # Apply rotation by shifting array indices
+            if shift_amount != 0:
+                # Positive shift for counter-clockwise, negative for clockwise
+                rotated_lidar = lidar_data[-shift_amount:] + lidar_data[:-shift_amount]
+                
+                # Reconstruct the data line with original angular velocity preserved
+                new_data_parts = rotated_lidar + other_data + [angular_velocity]
+                
+                # Update the line in data manager
+                new_line = ','.join(new_data_parts) + '\n'
+                self.data_manager.lines[self.data_manager.pointer] = new_line
+                self.data_manager.update_current_frame_from_string(new_line.strip())
+                
+                # Refresh display
+                self.render_frame()
+                
+                print(f"Rotated LiDAR data by {angle_degrees}° (shifted by {shift_amount} indices), angular velocity preserved: {angular_velocity}")
+            
+        except Exception as e:
+            print(f"Error applying rotation transformation: {e}")
+            import traceback
+            traceback.print_exc()
     
     # Update methods
     def update_button_states(self):

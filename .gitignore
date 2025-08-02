@@ -71,6 +71,10 @@ visualizer_recent_files.txt
 *.log
 *.tmp
 
+# Test files (keep documentation)
+test/test_*.py
+!test/test_augmentation_panel.py
+
 # Data files (if large)
 # Uncomment if data files become too large for git
 # data/*.txt

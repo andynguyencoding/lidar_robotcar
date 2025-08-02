@@ -248,9 +248,28 @@ class UIManager:
                  font=('Arial', 7), foreground='darkgreen', 
                  wraplength=140).pack(anchor='w', pady=(0, 8), fill='x')
         
+        # Augmentation Panel
+        augment_panel = ttk.LabelFrame(parent, text="🔧 Augmentation", padding=6)
+        augment_panel.pack(fill='x', pady=(5, 0))
+        
+        # Rotation controls only
+        ttk.Label(augment_panel, text="Rotation:", 
+                 font=('Arial', 9, 'bold'), foreground='darkgreen').pack(anchor='w', pady=(0, 2))
+        
+        rotation_frame = ttk.Frame(augment_panel)
+        rotation_frame.pack(fill='x', pady=(0, 5))
+        
+        ttk.Button(rotation_frame, text="↺ CCW", command=self.callbacks.get('rotate_ccw'), width=8).pack(side='left', padx=(0, 5))
+        ttk.Button(rotation_frame, text="CW ↻", command=self.callbacks.get('rotate_cw'), width=8).pack(side='left')
+        
+        # Movement step info
+        ttk.Label(augment_panel, text="💡 Configure step size in File > Preferences", 
+                 font=('Arial', 7), foreground='gray', 
+                 wraplength=140).pack(anchor='w', pady=(5, 0), fill='x')
+        
         # Linear velocity
         ttk.Label(input_panel, text="Linear Vel:", 
-                 font=('Arial', 9, 'bold'), foreground='darkblue').pack(anchor='w', pady=(0, 2))
+                 font=('Arial', 9, 'bold'), foreground='darkblue').pack(anchor='w', pady=(8, 2))
         
         self.linear_entry = ttk.Entry(input_panel, textvariable=self.linear_var, 
                                      width=18, font=('Courier', 9))
@@ -317,6 +336,8 @@ class UIManager:
         
         file_menu.add_separator()
         file_menu.add_command(label="Save Data", command=self.callbacks.get('save_data'), accelerator="Ctrl+S")
+        file_menu.add_separator()
+        file_menu.add_command(label="Preferences...", command=self.callbacks.get('show_preferences_dialog'))
         
         # Data menu
         data_menu = tk.Menu(menubar, tearoff=0)
