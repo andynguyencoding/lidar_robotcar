@@ -173,6 +173,7 @@ class VisualizerWindow:
             
             # Help functions
             'show_about_dialog': self.show_about_dialog,
+            'show_controls_dialog': self.show_controls_dialog,
             
             # Visual settings
             'show_scale_factor_dialog': self.show_scale_factor_dialog,
@@ -190,7 +191,11 @@ class VisualizerWindow:
             'rotate_cw': self.rotate_cw,
             'rotate_ccw': self.rotate_ccw,
             'add_augmented_frames': self.add_augmented_frames,
-            'duplicate_current_frame': self.duplicate_current_frame
+            'duplicate_current_frame': self.duplicate_current_frame,
+            
+            # Data splitting controls
+            'split_data': self.split_data,
+            'move_to_next_set': self.move_to_next_set
         }
     
     def on_window_resize(self, event):
@@ -1647,6 +1652,128 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
         
         messagebox.showinfo("About LiDAR Visualizer", about_text)
     
+    def show_controls_dialog(self):
+        """Show the Controls dialog with keyboard shortcuts and usage information"""
+        import tkinter as tk
+        from tkinter import ttk
+        
+        # Create popup window
+        popup = tk.Toplevel(self.root)
+        popup.title("Controls & Keyboard Shortcuts")
+        popup.geometry("700x500")
+        popup.resizable(True, True)
+        
+        # Center the popup
+        popup.transient(self.root)
+        popup.grab_set()
+        
+        # Calculate center position
+        popup.update_idletasks()
+        x = (popup.winfo_screenwidth() // 2) - (350)
+        y = (popup.winfo_screenheight() // 2) - (250)
+        popup.geometry(f"700x500+{x}+{y}")
+        
+        main_frame = ttk.Frame(popup, padding=20)
+        main_frame.pack(fill='both', expand=True)
+        
+        # Title
+        title_label = ttk.Label(main_frame, text="🎮 Controls & Keyboard Shortcuts", 
+                               font=('Arial', 14, 'bold'))
+        title_label.pack(pady=(0, 20))
+        
+        # Create scrollable text widget
+        text_frame = ttk.Frame(main_frame)
+        text_frame.pack(fill='both', expand=True)
+        
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(text_frame)
+        scrollbar.pack(side='right', fill='y')
+        
+        # Text widget
+        text_widget = tk.Text(text_frame, wrap='word', yscrollcommand=scrollbar.set,
+                             font=('Consolas', 10), padx=10, pady=10)
+        text_widget.pack(side='left', fill='both', expand=True)
+        scrollbar.config(command=text_widget.yview)
+        
+        # Controls content
+        controls_text = """KEYBOARD SHORTCUTS:
+
+🎵 PLAYBACK CONTROLS:
+  Space          Play/Pause or Next frame (in inspect mode)
+  I              Toggle Inspect/Continuous mode
+
+📍 NAVIGATION:
+  ←→ Arrow Keys  Previous/Next frame
+  Home           First frame
+  End            Last frame
+  
+📝 MODIFIED FRAMES:
+  ↑↓ Arrow Keys  Previous/Next modified frame
+  Page Up        First modified frame
+  Page Down      Last modified frame
+
+🔄 DATA MANIPULATION:
+  H              Flip Horizontal
+  V              Flip Vertical
+  R              Replace current frame with previous
+  U              Undo last change
+
+🤖 AI FEATURES:
+  AI Menu        Load AI models for predictions
+  
+📊 DATA SPLITTING:
+  Split Data     Randomly split data into train/validation/test sets
+  Move Set       Rotate current frame between dataset splits
+  
+MOUSE CONTROLS:
+
+🖱️ VISUALIZATION:
+  - Click buttons in the interface for various functions
+  - Use entry fields to navigate to specific frames
+  - Toggle visualization options with checkboxes
+
+📋 INTERFACE PANELS:
+
+🎮 Left Panel - Navigation & Controls:
+  - Play/Pause, mode toggle, frame navigation
+  - Frame input field and modified frame navigation
+  
+📊 Right Panel - Data Management:
+  - Flip controls with "All frames" option
+  - Data splitting and set management tools
+  
+📈 Visualization Panel:
+  - LiDAR point visualization
+  - Direction indicators (forward, current, previous, AI prediction)
+  - Toggle visibility options
+  
+📋 Input Controls:
+  - Angular velocity, linear velocity inputs
+  - Frame information and statistics
+  
+💡 TIPS:
+  - Use inspection mode for frame-by-frame analysis
+  - Apply "All" checkbox for batch flip operations
+  - Check status bar for current frame's dataset assignment
+  - Use modified frame navigation to review changes
+  - Load AI models for intelligent predictions"""
+        
+        text_widget.insert('1.0', controls_text)
+        text_widget.config(state='disabled')  # Make it read-only
+        
+        # Close button
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(pady=(20, 0))
+        
+        def close_dialog():
+            popup.destroy()
+        
+        ttk.Button(button_frame, text="Close", command=close_dialog, 
+                  width=10).pack()
+        
+        # Bind Escape key
+        popup.bind('<Escape>', lambda e: close_dialog())
+    
     def show_kbest_analysis(self):
         """Show the K-Best feature analysis dialog"""
         try:
@@ -1973,7 +2100,7 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
         # Create popup window
         popup = tk.Toplevel(self.root)
         popup.title("Preferences")
-        popup.geometry("450x280")
+        popup.geometry("450x380")
         popup.resizable(False, False)
         
         # Center the popup
@@ -1983,8 +2110,8 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
         # Calculate center position
         popup.update_idletasks()
         x = (popup.winfo_screenwidth() // 2) - (450 // 2)
-        y = (popup.winfo_screenheight() // 2) - (280 // 2)
-        popup.geometry(f"450x280+{x}+{y}")
+        y = (popup.winfo_screenheight() // 2) - (380 // 2)
+        popup.geometry(f"450x380+{x}+{y}")
         
         main_frame = ttk.Frame(popup, padding=20)
         main_frame.pack(fill='both', expand=True)
@@ -2006,8 +2133,36 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
         unit_combo.pack(anchor='w', pady=(5, 0))
         unit_combo.focus_set()
         
+        # Data split ratios configuration
+        split_frame = ttk.Frame(main_frame)
+        split_frame.pack(fill='x', pady=(0, 15))
+        
+        ttk.Label(split_frame, text="Data Split Ratios (Train:Validation:Test):", 
+                 font=('Arial', 10)).pack(anchor='w')
+        
+        ratios_frame = ttk.Frame(split_frame)
+        ratios_frame.pack(anchor='w', pady=(5, 0))
+        
+        train_var = tk.StringVar(value=str(self.ui_manager.split_ratios[0]))
+        val_var = tk.StringVar(value=str(self.ui_manager.split_ratios[1]))
+        test_var = tk.StringVar(value=str(self.ui_manager.split_ratios[2]))
+        
+        ttk.Label(ratios_frame, text="Train:").pack(side='left')
+        train_entry = ttk.Entry(ratios_frame, textvariable=train_var, width=5)
+        train_entry.pack(side='left', padx=(5, 10))
+        
+        ttk.Label(ratios_frame, text="Val:").pack(side='left')
+        val_entry = ttk.Entry(ratios_frame, textvariable=val_var, width=5)
+        val_entry.pack(side='left', padx=(5, 10))
+        
+        ttk.Label(ratios_frame, text="Test:").pack(side='left')
+        test_entry = ttk.Entry(ratios_frame, textvariable=test_var, width=5)
+        test_entry.pack(side='left', padx=(5, 0))
+        
+        ttk.Label(ratios_frame, text="%").pack(side='left', padx=(5, 0))
+        
         # Current values info
-        info_text = f"Current Unit: {AUGMENTATION_UNIT}"
+        info_text = f"Current Unit: {AUGMENTATION_UNIT}\nCurrent Split: {':'.join(map(str, self.ui_manager.split_ratios))}%"
         info_label = ttk.Label(main_frame, text=info_text, 
                               font=('Arial', 8), foreground='blue')
         info_label.pack(pady=(0, 15))
@@ -2021,13 +2176,31 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
             try:
                 new_unit = unit_var.get()
                 
+                # Validate and update split ratios
+                train_ratio = int(train_var.get())
+                val_ratio = int(val_var.get())
+                test_ratio = int(test_var.get())
+                
+                if train_ratio + val_ratio + test_ratio != 100:
+                    messagebox.showerror("Error", "Split ratios must sum to 100%")
+                    return
+                
+                if train_ratio <= 0 or val_ratio <= 0 or test_ratio <= 0:
+                    messagebox.showerror("Error", "All split ratios must be greater than 0")
+                    return
+                
                 # Update config module
                 import config
                 config.AUGMENTATION_UNIT = new_unit
                 
-                popup.destroy()
-                print(f"Preferences updated - Unit: {new_unit}")
+                # Update split ratios
+                self.ui_manager.split_ratios = [train_ratio, val_ratio, test_ratio]
                 
+                popup.destroy()
+                print(f"Preferences updated - Unit: {new_unit}, Split ratios: {train_ratio}:{val_ratio}:{test_ratio}")
+                
+            except ValueError:
+                messagebox.showerror("Error", "Split ratios must be valid integers")
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to update preferences: {str(e)}")
         
@@ -2175,6 +2348,28 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
             # Insert the new frames into the data
             self.data_manager.lines[insert_position:insert_position] = new_lines
             
+            # Preserve dataset split information for new frames
+            if self.ui_manager.data_splits:
+                current_frame = self.data_manager.pointer
+                current_split = self.ui_manager.data_splits.get(current_frame, 'train')  # Default to train if unassigned
+                
+                # Assign the same split to all new augmented frames
+                for i in range(total_added):
+                    new_frame_idx = insert_position + i
+                    self.ui_manager.data_splits[new_frame_idx] = current_split
+                    
+                # Update indices for existing frames that got shifted
+                updated_splits = {}
+                for frame_idx, split_type in self.ui_manager.data_splits.items():
+                    if frame_idx >= insert_position and frame_idx not in range(insert_position, insert_position + total_added):
+                        # This frame was shifted by the insertion
+                        updated_splits[frame_idx + total_added] = split_type
+                    elif frame_idx < insert_position or frame_idx in range(insert_position, insert_position + total_added):
+                        # This frame wasn't shifted or is one of the new frames
+                        updated_splits[frame_idx] = split_type
+                
+                self.ui_manager.data_splits = updated_splits
+            
             # Mark that augmented frames were added
             self.data_manager.mark_augmented_frames_added()
             
@@ -2226,6 +2421,28 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
             # Insert the duplicate frames into the data
             self.data_manager.lines[insert_position:insert_position] = new_lines
             
+            # Preserve dataset split information for duplicated frames
+            if self.ui_manager.data_splits:
+                current_frame = self.data_manager.pointer
+                current_split = self.ui_manager.data_splits.get(current_frame, 'train')  # Default to train if unassigned
+                
+                # Assign the same split to all duplicated frames
+                for i in range(total_added):
+                    new_frame_idx = insert_position + i
+                    self.ui_manager.data_splits[new_frame_idx] = current_split
+                    
+                # Update indices for existing frames that got shifted
+                updated_splits = {}
+                for frame_idx, split_type in self.ui_manager.data_splits.items():
+                    if frame_idx >= insert_position and frame_idx not in range(insert_position, insert_position + total_added):
+                        # This frame was shifted by the insertion
+                        updated_splits[frame_idx + total_added] = split_type
+                    elif frame_idx < insert_position or frame_idx in range(insert_position, insert_position + total_added):
+                        # This frame wasn't shifted or is one of the new frames
+                        updated_splits[frame_idx] = split_type
+                
+                self.ui_manager.data_splits = updated_splits
+            
             # Mark that frames were added (reuse the augmented frames tracking)
             self.data_manager.mark_augmented_frames_added()
             
@@ -2243,6 +2460,128 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
             
         except Exception as e:
             print(f"Error duplicating current frame: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def split_data(self):
+        """Split the data into train, validation, and test sets"""
+        try:
+            import random
+            from tkinter import messagebox
+            
+            if not hasattr(self, 'data_manager') or not self.data_manager:
+                messagebox.showerror("Error", "No data manager available")
+                return
+            
+            # Get total number of frames (excluding header)
+            total_frames = len(self.data_manager.lines)
+            if hasattr(self.data_manager, '_data_start_line'):
+                total_frames -= self.data_manager._data_start_line
+            
+            if total_frames <= 0:
+                messagebox.showerror("Error", "No data frames available to split")
+                return
+            
+            # Get split ratios
+            train_ratio, val_ratio, test_ratio = self.ui_manager.split_ratios
+            
+            # Calculate split sizes
+            train_size = int(total_frames * train_ratio / 100)
+            val_size = int(total_frames * val_ratio / 100)
+            test_size = total_frames - train_size - val_size  # Remaining frames go to test
+            
+            # Create list of frame indices
+            start_idx = getattr(self.data_manager, '_data_start_line', 0)
+            frame_indices = list(range(start_idx, start_idx + total_frames))
+            
+            # Shuffle indices for random split
+            random.shuffle(frame_indices)
+            
+            # Split indices
+            train_indices = frame_indices[:train_size]
+            val_indices = frame_indices[train_size:train_size + val_size]
+            test_indices = frame_indices[train_size + val_size:]
+            
+            # Clear existing splits
+            self.ui_manager.data_splits.clear()
+            
+            # Assign splits
+            for idx in train_indices:
+                self.ui_manager.data_splits[idx] = 'train'
+            for idx in val_indices:
+                self.ui_manager.data_splits[idx] = 'validation'
+            for idx in test_indices:
+                self.ui_manager.data_splits[idx] = 'test'
+            
+            # Mark data as changed
+            self.mark_data_changed()
+            
+            # Update status to show current frame's split
+            self.update_status()
+            
+            # Show detailed split information popup
+            split_message = (
+                f"📊 Data Split Successfully Completed!\n\n"
+                f"Total Frames: {total_frames}\n"
+                f"Split Ratios: {train_ratio}% : {val_ratio}% : {test_ratio}%\n\n"
+                f"📚 Training Set: {len(train_indices)} frames\n"
+                f"🔍 Validation Set: {len(val_indices)} frames\n"
+                f"🧪 Test Set: {len(test_indices)} frames\n\n"
+                f"✨ Frames have been randomly distributed across datasets.\n"
+                f"Use the status bar to see which set each frame belongs to."
+            )
+            
+            messagebox.showinfo("Data Split Complete", split_message)
+            
+            print(f"Data split completed: Train={len(train_indices)}, Val={len(val_indices)}, Test={len(test_indices)}")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to split data: {str(e)}")
+            print(f"Error splitting data: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def move_to_next_set(self):
+        """Move current frame to the next dataset (train -> validation -> test -> train)"""
+        try:
+            from tkinter import messagebox
+            
+            if not hasattr(self, 'data_manager') or not self.data_manager:
+                messagebox.showerror("Error", "No data manager available")
+                return
+                
+            current_frame = self.data_manager.pointer
+            
+            # Check if data has been split
+            if not self.ui_manager.data_splits:
+                messagebox.showwarning("Warning", "Data has not been split yet. Please split data first.")
+                return
+            
+            # Get current split type
+            current_split = self.ui_manager.data_splits.get(current_frame, 'train')
+            
+            # Determine next split type
+            if current_split == 'train':
+                next_split = 'validation'
+            elif current_split == 'validation':
+                next_split = 'test'
+            else:  # test
+                next_split = 'train'
+            
+            # Update the split
+            self.ui_manager.data_splits[current_frame] = next_split
+            
+            # Mark data as changed
+            self.mark_data_changed()
+            
+            # Update status display
+            self.update_status()
+            
+            print(f"Frame {current_frame} moved from {current_split} to {next_split} set")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to move frame to next set: {str(e)}")
+            print(f"Error moving frame to next set: {e}")
             import traceback
             traceback.print_exc()
     
@@ -2378,7 +2717,14 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
         
         data_text = 'AUGMENTED' if self.augmented_mode else 'REAL'
         
-        self.ui_manager.status_var.set(f"Data: {os.path.basename(self.config['data_file'])} | Mode: {mode_text} | Data: {data_text}")
+        # Add dataset split information if data has been split
+        split_text = ""
+        if hasattr(self, 'data_manager') and self.data_manager and self.ui_manager.data_splits:
+            current_frame = self.data_manager.pointer
+            split_type = self.ui_manager.data_splits.get(current_frame, 'unassigned')
+            split_text = f" | Set: {split_type.upper()}"
+        
+        self.ui_manager.status_var.set(f"Data: {os.path.basename(self.config['data_file'])} | Mode: {mode_text} | Data: {data_text}{split_text}")
     
     def update_inputs(self):
         """Update input fields and info displays"""

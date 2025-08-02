@@ -70,6 +70,11 @@ class VisualizerWindow:
         self.show_prev_vel = tk.BooleanVar(value=True)      # Previous velocity (red line)
         self.show_pred_vel = tk.BooleanVar(value=True)      # AI prediction (orange line)
         self.show_forward_dir = tk.BooleanVar(value=True)   # Forward direction (blue line)
+        
+        # Data splitting variables
+        self.data_splits = {}  # Will store frame_id -> split_type mapping
+        self.split_ratios = [70, 20, 10]  # Default train:validation:test ratios
+        
         self.root.geometry("850x750")  # Reduced size for better usability
         self.root.resizable(True, True)  # Make window resizable
         self.root.minsize(600, 500)  # Set minimum size
@@ -173,20 +178,23 @@ class VisualizerWindow:
         main_frame = ttk.Frame(self.root)
         main_frame.pack(fill='both', expand=True, padx=10, pady=10)
         
-        # Control buttons panel - moved to top, horizontal layout
-        controls_panel = ttk.LabelFrame(main_frame, text="Controls", padding=5)
-        controls_panel.pack(fill='x', pady=(0, 5))
+        # Split controls panel - left and right sections
+        controls_container = ttk.Frame(main_frame)
+        controls_container.pack(fill='x', pady=(0, 5))
         
-        # Create horizontal button layout - First row
-        button_frame = ttk.Frame(controls_panel)
+        # Left controls panel - Navigation & Controls
+        left_controls = ttk.LabelFrame(controls_container, text="Navigation & Controls", padding=5)
+        left_controls.pack(side='left', fill='both', expand=True, padx=(0, 5))
+        
+        # First row - main control buttons
+        button_frame = ttk.Frame(left_controls)
         button_frame.pack(fill='x')
         
-        # Control buttons - horizontal layout
         self.play_pause_button = ttk.Button(button_frame, text="▶ Play", 
                                            command=self.toggle_pause, width=12)
         self.play_pause_button.pack(side='left', padx=(0, 5))
         
-        # Prev/Next buttons for inspection mode (initially hidden)
+        # Navigation buttons (initially hidden)
         self.first_button = ttk.Button(button_frame, text="⏮ First", 
                                       command=self.first_frame, width=12)
         self.prev_button = ttk.Button(button_frame, text="◀ Prev", 
@@ -200,37 +208,23 @@ class VisualizerWindow:
                                      command=self.toggle_inspect, width=12)
         self.mode_button.pack(side='left', padx=(0, 5))
         
-        ttk.Button(button_frame, text="Flip H", 
-                  command=self.flip_horizontal, width=8).pack(side='left', padx=(0, 2))
-        ttk.Button(button_frame, text="Flip V", 
-                  command=self.flip_vertical, width=8).pack(side='left', padx=(0, 5))
-        
-        # Checkbox for "Apply to All Frames"
-        self.flip_all_var = tk.BooleanVar()
-        self.flip_all_checkbox = ttk.Checkbutton(button_frame, text="All", 
-                                               variable=self.flip_all_var, width=4)
-        self.flip_all_checkbox.pack(side='left', padx=(0, 5))
-        
-        # Frame number input row - between first and second button sets
-        frame_input_frame = ttk.Frame(controls_panel)
+        # Frame input row
+        frame_input_frame = ttk.Frame(left_controls)
         frame_input_frame.pack(fill='x', pady=(5, 0))
         
-        # Frame label and input field
         ttk.Label(frame_input_frame, text="Frame:", width=6).pack(side='left', padx=(0, 5))
         self.frame_var = tk.StringVar()
         self.frame_entry = ttk.Entry(frame_input_frame, textvariable=self.frame_var, width=10)
         self.frame_entry.pack(side='left', padx=(0, 10))
         self.frame_entry.bind('<Return>', self.on_frame_input)
         
-        # Add total frames info
         self.total_frames_label = ttk.Label(frame_input_frame, text="", font=('Arial', 9), foreground='gray')
         self.total_frames_label.pack(side='left', padx=(5, 0))
         
-        # Create second button frame for modified frames navigation - Second row
-        self.modified_button_frame = ttk.Frame(controls_panel)
+        # Modified frames navigation
+        self.modified_button_frame = ttk.Frame(left_controls)
         self.modified_button_frame.pack(fill='x', pady=(5, 0))
         
-        # Modified frames navigation buttons (initially hidden)
         self.first_modified_button = ttk.Button(self.modified_button_frame, text="⏮ First Mod", 
                                               command=self.first_modified_frame, width=12)
         self.prev_modified_button = ttk.Button(self.modified_button_frame, text="◀ Prev Mod", 
@@ -240,15 +234,44 @@ class VisualizerWindow:
         self.last_modified_button = ttk.Button(self.modified_button_frame, text="Last Mod ⏭", 
                                              command=self.last_modified_frame, width=12)
         
-        # Keyboard shortcuts info - separate frame with wrapping
-        shortcuts_frame = ttk.Frame(controls_panel)
-        shortcuts_frame.pack(fill='x', pady=(5, 0))
+        # Right controls panel - Data Management & Flipping
+        right_controls = ttk.LabelFrame(controls_container, text="Data Management", padding=5)
+        right_controls.pack(side='right', fill='y')
         
-        shortcuts_label = ttk.Label(shortcuts_frame, 
-                                   text="💡 Shortcuts: Space=Play/Next | I=Mode | H=Flip H | V=Flip V | R=Replace | U=Undo | ←→=Prev/Next | Home/End=First/Last | ↑↓=Prev/Next Modified | PgUp/PgDn=First/Last Modified | 🤖 AI Menu: Load models for predictions", 
-                                   font=('Arial', 8), foreground='navy', justify='left', 
-                                   wraplength=800)  # Allow text to wrap at 800 pixels
-        shortcuts_label.pack(anchor='w')
+        # Flipping controls
+        flip_frame = ttk.Frame(right_controls)
+        flip_frame.pack(fill='x', pady=(0, 5))
+        
+        ttk.Button(flip_frame, text="Flip H", 
+                  command=self.flip_horizontal, width=8).pack(side='left', padx=(0, 2))
+        ttk.Button(flip_frame, text="Flip V", 
+                  command=self.flip_vertical, width=8).pack(side='left', padx=(0, 5))
+        
+        # Checkbox for "Apply to All Frames"
+        self.flip_all_var = tk.BooleanVar()
+        self.flip_all_checkbox = ttk.Checkbutton(flip_frame, text="All", 
+                                               variable=self.flip_all_var, width=4)
+        self.flip_all_checkbox.pack(side='left', padx=(0, 5))
+        
+        # Data splitting controls
+        split_frame = ttk.Frame(right_controls)
+        split_frame.pack(fill='x', pady=(5, 5))
+        
+        ttk.Button(split_frame, text="📊 Split Data", 
+                  command=self.split_data, width=12).pack(side='left', padx=(0, 5))
+        
+        ttk.Button(split_frame, text="🔄 Move Set", 
+                  command=self.move_to_next_set, width=12).pack(side='left')
+        
+        # Status display - MUST be packed before content_frame when using side='bottom'
+        status_frame = ttk.Frame(main_frame)
+        status_frame.pack(fill='x', side='bottom', pady=(5, 0))
+        
+        self.status_var = tk.StringVar()
+        self.status_var.set(f"Data: {os.path.basename(self.config['data_file'])} | Mode: {'INSPECT' if self.inspect_mode else 'CONTINUOUS'} | Data: {'AUGMENTED' if self.augmented_mode else 'REAL'}")
+        status_label = ttk.Label(status_frame, textvariable=self.status_var, 
+                 font=('TkDefaultFont', 9), wraplength=800, anchor='e', justify='right')
+        status_label.pack(fill='x')
         
         # Create horizontal layout for main content
         content_frame = ttk.Frame(main_frame)
@@ -425,15 +448,6 @@ class VisualizerWindow:
         self.canvas = tk.Canvas(self.pygame_frame, width=self.current_canvas_size, height=self.current_canvas_size, bg='white')
         self.canvas.pack(expand=True)
         
-        # Status display at the bottom - minimal and compact
-        status_frame = ttk.Frame(main_frame)
-        status_frame.pack(fill='x', side='bottom', pady=(5, 0))
-        
-        self.status_var = tk.StringVar()
-        self.status_var.set(f"Data: {os.path.basename(self.config['data_file'])} | Mode: {'INSPECT' if self.inspect_mode else 'CONTINUOUS'} | Data: {'AUGMENTED' if self.augmented_mode else 'REAL'}")
-        ttk.Label(status_frame, textvariable=self.status_var, 
-                 font=('TkDefaultFont', 9), wraplength=800, anchor='e', justify='right').pack(fill='x')
-        
         # Initialize the button states after setup
         self.update_button_states()
         
@@ -504,6 +518,8 @@ class VisualizerWindow:
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Help", menu=help_menu)
+        help_menu.add_command(label="Controls...", command=self.show_controls_dialog)
+        help_menu.add_separator()
         help_menu.add_command(label="About...", command=self.show_about_dialog)
         
         # Bind keyboard shortcuts
@@ -1409,7 +1425,13 @@ class VisualizerWindow:
         
         data_text = 'AUGMENTED' if self.augmented_mode else 'REAL'
         
-        self.status_var.set(f"Data: {os.path.basename(self.config['data_file'])} | Mode: {mode_text} | Data: {data_text}")
+        # Add data split information if available
+        split_text = ""
+        if self.data_splits and hasattr(self.data_manager, '_pointer'):
+            current_split = self.data_splits.get(self.data_manager._pointer, 'UNASSIGNED')
+            split_text = f" | Set: {current_split}"
+        
+        self.status_var.set(f"Data: {os.path.basename(self.config['data_file'])} | Mode: {mode_text} | Data: {data_text}{split_text}")
     
     def load_data_file(self, filename):
         """Load a data file and update the application state"""
@@ -2639,7 +2661,7 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
         # Create popup window
         popup = tk.Toplevel(self.root)
         popup.title("Preferences")
-        popup.geometry("450x280")
+        popup.geometry("450x400")
         popup.resizable(False, False)
         
         # Center the popup
@@ -2649,8 +2671,8 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
         # Calculate center position
         popup.update_idletasks()
         x = (popup.winfo_screenwidth() // 2) - (450 // 2)
-        y = (popup.winfo_screenheight() // 2) - (280 // 2)
-        popup.geometry(f"450x280+{x}+{y}")
+        y = (popup.winfo_screenheight() // 2) - (400 // 2)
+        popup.geometry(f"450x400+{x}+{y}")
         
         main_frame = ttk.Frame(popup, padding=20)
         main_frame.pack(fill='both', expand=True)
@@ -2670,13 +2692,45 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
         unit_combo = ttk.Combobox(unit_frame, textvariable=unit_var, 
                                  values=["m", "mm"], width=10, state="readonly")
         unit_combo.pack(anchor='w', pady=(5, 0))
-        unit_combo.focus_set()
         
         # Current values info
         info_text = f"Current Unit: {AUGMENTATION_UNIT}"
         info_label = ttk.Label(main_frame, text=info_text, 
                               font=('Arial', 8), foreground='blue')
         info_label.pack(pady=(0, 15))
+        
+        # Split ratios configuration
+        split_frame = ttk.LabelFrame(main_frame, text="Data Split Ratios", padding=10)
+        split_frame.pack(fill='x', pady=(0, 15))
+        
+        # Train/Validation/Test ratio controls
+        ratio_vars = {}
+        for i, label in enumerate(['Train', 'Validation', 'Test']):
+            row_frame = ttk.Frame(split_frame)
+            row_frame.pack(fill='x', pady=2)
+            
+            ttk.Label(row_frame, text=f"{label}:", width=10).pack(side='left')
+            ratio_vars[label.lower()] = tk.DoubleVar(value=self.split_ratios[i])
+            
+            spinbox = ttk.Spinbox(row_frame, from_=0.0, to=100.0, increment=1.0,
+                                textvariable=ratio_vars[label.lower()], width=8)
+            spinbox.pack(side='left', padx=(5, 0))
+            ttk.Label(row_frame, text="%").pack(side='left', padx=(2, 0))
+        
+        # Total validation
+        def validate_total(*args):
+            try:
+                total = sum(var.get() for var in ratio_vars.values())
+                total_label.config(text=f"Total: {total:.1f}%", 
+                                 foreground='red' if abs(total - 100.0) > 0.1 else 'green')
+            except:
+                total_label.config(text="Total: Invalid", foreground='red')
+        
+        for var in ratio_vars.values():
+            var.trace('w', validate_total)
+        
+        total_label = ttk.Label(split_frame, text="Total: 100.0%", foreground='green')
+        total_label.pack(pady=(5, 0))
         
         # Button frame
         button_frame = ttk.Frame(main_frame)
@@ -2687,12 +2741,22 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
             try:
                 new_unit = unit_var.get()
                 
+                # Validate split ratios
+                new_ratios = [ratio_vars['train'].get(), ratio_vars['validation'].get(), ratio_vars['test'].get()]
+                total = sum(new_ratios)
+                if abs(total - 100.0) > 0.1:
+                    messagebox.showerror("Error", f"Split ratios must total 100%. Current total: {total:.1f}%")
+                    return
+                
                 # Update config module
                 import config
                 config.AUGMENTATION_UNIT = new_unit
                 
+                # Update split ratios
+                self.split_ratios = new_ratios
+                
                 popup.destroy()
-                print(f"Preferences updated - Unit: {new_unit}")
+                print(f"Preferences updated - Unit: {new_unit}, Split ratios: {new_ratios}")
                 
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to update preferences: {str(e)}")
@@ -2707,9 +2771,426 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
         ttk.Button(button_frame, text="Cancel", command=cancel_dialog, 
                   width=10).pack(side='left')
         
+        # Initial validation
+        validate_total()
+        unit_combo.focus_set()
+        
         # Bind Enter and Escape keys
         unit_combo.bind('<Return>', lambda e: apply_preferences())
         popup.bind('<Escape>', lambda e: cancel_dialog())
+    
+    def show_controls_dialog(self):
+        """Show comprehensive controls help dialog"""
+        # Create popup window
+        popup = tk.Toplevel(self.root)
+        popup.title("Controls Guide")
+        popup.geometry("700x600")
+        popup.resizable(True, True)
+        
+        # Center the popup
+        popup.transient(self.root)
+        popup.grab_set()
+        
+        # Calculate center position
+        popup.update_idletasks()
+        x = (popup.winfo_screenwidth() // 2) - (700 // 2)
+        y = (popup.winfo_screenheight() // 2) - (600 // 2)
+        popup.geometry(f"700x600+{x}+{y}")
+        
+        # Main frame with scrollable content
+        main_frame = ttk.Frame(popup, padding=20)
+        main_frame.pack(fill='both', expand=True)
+        
+        # Create scrollable text widget
+        text_frame = ttk.Frame(main_frame)
+        text_frame.pack(fill='both', expand=True)
+        
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(text_frame)
+        scrollbar.pack(side='right', fill='y')
+        
+        # Text widget
+        text_widget = tk.Text(text_frame, wrap='word', font=('Consolas', 10),
+                             yscrollcommand=scrollbar.set, state='normal')
+        text_widget.pack(side='left', fill='both', expand=True)
+        scrollbar.config(command=text_widget.yview)
+        
+        # Controls content
+        controls_text = """LiDAR Robotcar Visualizer - Controls Guide
+
+═══════════════════════════════════════════════════════════════════════════════
+
+NAVIGATION CONTROLS
+═══════════════════════════════════════════════════════════════════════════════
+
+Frame Navigation:
+  • Previous Frame       ←  (Left Arrow)     |  [<] Button
+  • Next Frame          →  (Right Arrow)    |  [>] Button
+  • Jump to Frame       Direct input in frame number field + Enter
+  • First Frame         Ctrl + Home         |  [<<] Button  
+  • Last Frame          Ctrl + End          |  [>>] Button
+
+Navigation Modes:
+  • All Frames          Navigate through entire dataset
+  • Modified Only       Navigate only through augmented/modified frames
+  • Dataset Navigation  Navigate within specific train/validation/test sets
+
+═══════════════════════════════════════════════════════════════════════════════
+
+VISUALIZATION CONTROLS  
+═══════════════════════════════════════════════════════════════════════════════
+
+Display Options:
+  • Show Grid           Toggle coordinate grid overlay
+  • Show Axes           Toggle X/Y axis indicators
+  • Show Labels         Toggle distance and angle labels
+  • Auto Scale          Automatically adjust zoom to fit data
+  • Center View         Reset view to origin (0,0)
+
+Zoom & Pan:
+  • Zoom In             Mouse wheel up / + key
+  • Zoom Out            Mouse wheel down / - key  
+  • Pan View            Click and drag with mouse
+  • Reset Zoom          Double-click on plot area
+
+Color & Style:
+  • Point Color         Customize LiDAR point colors
+  • Background          Choose background color schemes
+  • Line Width          Adjust point/line thickness
+  • Grid Style          Modify grid appearance
+
+═══════════════════════════════════════════════════════════════════════════════
+
+DATA AUGMENTATION CONTROLS
+═══════════════════════════════════════════════════════════════════════════════
+
+Flip Operations:
+  • Flip Horizontal     Mirror data along X-axis (left ↔ right)
+  • Flip Vertical       Mirror data along Y-axis (up ↔ down)
+  • Apply to All        Apply flip operations to entire dataset
+
+Rotation Control:
+  • Rotate Left         Ctrl + L  |  Rotate counter-clockwise by set amount
+  • Rotate Right        Ctrl + R  |  Rotate clockwise by set amount
+  • Custom Angle        Shift + R |  Specify exact rotation angle
+  • Rotation Step       Configure rotation increment (default: 10°)
+
+Direction Controls:
+  • Set Direction       Click to set new forward direction vector
+  • Direction Ratio     Configure X:Y ratio for directional adjustments
+  • Reset Direction     Return to default orientation
+
+Scale Operations:
+  • Scale Factor        Multiply distances by specified factor
+  • Uniform Scaling     Apply same factor to all measurements
+  • Custom Range        Scale only specific distance ranges
+
+═══════════════════════════════════════════════════════════════════════════════
+
+DATA MANAGEMENT
+═══════════════════════════════════════════════════════════════════════════════
+
+File Operations:
+  • Load Data           Ctrl + O  |  Load .txt data files
+  • Save Data           Ctrl + S  |  Save modified dataset
+  • Export Frame        Save current frame as separate file
+  • Batch Processing    Apply operations to multiple files
+
+Data Splitting:
+  • Split Data          Randomly assign frames to train/validation/test sets
+  • Configure Ratios    Set custom split percentages (default: 70/20/10)
+  • Next Set Frame      Navigate to next frame in current dataset
+  • View Assignment     Status shows current frame's dataset assignment
+
+Statistics & Analysis:
+  • Data Statistics     Ctrl + I  |  View dataset metrics and information
+  • Frame Analysis      Analyze current frame characteristics
+  • Range Distribution  View distance measurement histograms
+  • Angular Coverage    Analyze angular data distribution
+
+═══════════════════════════════════════════════════════════════════════════════
+
+MACHINE LEARNING INTEGRATION
+═══════════════════════════════════════════════════════════════════════════════
+
+Model Controls:
+  • Load ML Model       Import trained .pkl model files
+  • Real-time Prediction    Get AI predictions for current frame
+  • Batch Prediction    Process multiple frames automatically
+  • Model Statistics    View model performance metrics
+
+Training Support:
+  • Dataset Preparation Export properly formatted training data
+  • Label Validation    Verify data labels and consistency
+  • Feature Extraction  Generate features for model training
+  • Cross-validation    Support for k-fold validation workflows
+
+═══════════════════════════════════════════════════════════════════════════════
+
+ADVANCED FEATURES
+═══════════════════════════════════════════════════════════════════════════════
+
+Preferences:
+  • Unit Configuration  Switch between meters and millimeters
+  • Split Ratios        Configure train/validation/test percentages
+  • Default Settings    Set preferred startup configuration
+  • Theme Options       Customize appearance and colors
+
+Keyboard Shortcuts Summary:
+  • Ctrl + O            Open file
+  • Ctrl + S            Save data  
+  • Ctrl + I            Show statistics
+  • Ctrl + L            Rotate left
+  • Ctrl + R            Rotate right
+  • Shift + R           Custom rotation
+  • ← / →              Navigate frames
+  • Ctrl + Home/End     Jump to first/last frame
+  • + / -              Zoom in/out
+  • Esc                 Close dialogs
+
+═══════════════════════════════════════════════════════════════════════════════
+
+TIPS & BEST PRACTICES
+═══════════════════════════════════════════════════════════════════════════════
+
+Efficient Workflow:
+  1. Load your dataset using File → Open
+  2. Configure data splitting ratios in Preferences
+  3. Split data into train/validation/test sets
+  4. Use navigation controls to review and augment data
+  5. Apply consistent augmentations across dataset
+  6. Export or save modified data for model training
+
+Data Quality:
+  • Always verify data integrity after augmentation
+  • Use statistics dialog to monitor data characteristics  
+  • Test different augmentation combinations
+  • Maintain consistent preprocessing across all sets
+
+Performance:
+  • Use "Modified Only" mode for efficient augmentation review
+  • Split large datasets for better memory management
+  • Save work frequently to prevent data loss
+  • Use batch operations for repetitive tasks
+
+═══════════════════════════════════════════════════════════════════════════════
+
+For technical support or additional features, please refer to the documentation
+or contact the development team.
+"""
+        
+        # Insert text and make read-only
+        text_widget.insert('1.0', controls_text)
+        text_widget.config(state='disabled')
+        
+        # Close button
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(pady=(15, 0))
+        
+        def close_dialog():
+            popup.destroy()
+        
+        ttk.Button(button_frame, text="Close", command=close_dialog, 
+                  width=10).pack()
+        
+        # Bind Escape key
+        popup.bind('<Escape>', lambda e: close_dialog())
+        
+        # Focus on text widget for scrolling
+        text_widget.focus_set()
+    
+    # Data splitting methods
+    
+    def split_data(self):
+        """Split the data into train/validation/test sets"""
+        if not self.data_manager.data_list:
+            messagebox.showwarning("Warning", "No data loaded to split.")
+            return
+        
+        # Create popup window
+        popup = tk.Toplevel(self.root)
+        popup.title("Split Data")
+        popup.geometry("350x300")
+        popup.resizable(False, False)
+        
+        # Center the popup
+        popup.transient(self.root)
+        popup.grab_set()
+        
+        # Calculate center position
+        popup.update_idletasks()
+        x = (popup.winfo_screenwidth() // 2) - (350 // 2)
+        y = (popup.winfo_screenheight() // 2) - (300 // 2)
+        popup.geometry(f"350x300+{x}+{y}")
+        
+        main_frame = ttk.Frame(popup, padding=20)
+        main_frame.pack(fill='both', expand=True)
+        
+        # Title
+        title_label = ttk.Label(main_frame, text="Split Data into Sets", 
+                               font=('Arial', 12, 'bold'))
+        title_label.pack(pady=(0, 15))
+        
+        # Info
+        total_frames = len(self.data_manager.data_list)
+        info_label = ttk.Label(main_frame, text=f"Total frames: {total_frames}")
+        info_label.pack(pady=(0, 10))
+        
+        # Split ratios display and controls
+        split_frame = ttk.LabelFrame(main_frame, text="Split Ratios (%)", padding=10)
+        split_frame.pack(fill='x', pady=(0, 15))
+        
+        ratio_vars = {}
+        for i, label in enumerate(['Train', 'Validation', 'Test']):
+            row_frame = ttk.Frame(split_frame)
+            row_frame.pack(fill='x', pady=2)
+            
+            ttk.Label(row_frame, text=f"{label}:", width=10).pack(side='left')
+            ratio_vars[label.lower()] = tk.DoubleVar(value=self.split_ratios[i])
+            
+            spinbox = ttk.Spinbox(row_frame, from_=0.0, to=100.0, increment=1.0,
+                                textvariable=ratio_vars[label.lower()], width=8)
+            spinbox.pack(side='left', padx=(5, 0))
+            ttk.Label(row_frame, text="%").pack(side='left', padx=(2, 0))
+        
+        # Preview
+        preview_frame = ttk.Frame(main_frame)
+        preview_frame.pack(fill='x', pady=(0, 15))
+        
+        preview_label = ttk.Label(preview_frame, text="Preview:", font=('Arial', 10, 'bold'))
+        preview_label.pack(anchor='w')
+        
+        preview_text = tk.Text(preview_frame, height=4, width=40, state='disabled')
+        preview_text.pack(pady=(5, 0))
+        
+        def update_preview(*args):
+            try:
+                ratios = [ratio_vars['train'].get(), ratio_vars['validation'].get(), ratio_vars['test'].get()]
+                total = sum(ratios)
+                
+                preview_text.config(state='normal')
+                preview_text.delete(1.0, tk.END)
+                
+                if abs(total - 100.0) > 0.1:
+                    preview_text.insert(tk.END, f"⚠️ Total must be 100% (currently {total:.1f}%)")
+                else:
+                    train_count = int(total_frames * ratios[0] / 100)
+                    val_count = int(total_frames * ratios[1] / 100)
+                    test_count = total_frames - train_count - val_count
+                    
+                    preview_text.insert(tk.END, f"Train: {train_count} frames ({ratios[0]:.1f}%)\n")
+                    preview_text.insert(tk.END, f"Validation: {val_count} frames ({ratios[1]:.1f}%)\n")
+                    preview_text.insert(tk.END, f"Test: {test_count} frames ({ratios[2]:.1f}%)")
+                
+                preview_text.config(state='disabled')
+            except:
+                pass
+        
+        for var in ratio_vars.values():
+            var.trace('w', update_preview)
+        
+        def perform_split():
+            """Perform the actual data split"""
+            try:
+                ratios = [ratio_vars['train'].get(), ratio_vars['validation'].get(), ratio_vars['test'].get()]
+                total = sum(ratios)
+                
+                if abs(total - 100.0) > 0.1:
+                    messagebox.showerror("Error", f"Split ratios must total 100%. Current total: {total:.1f}%")
+                    return
+                
+                # Update split ratios
+                self.split_ratios = ratios
+                
+                # Create random assignment for all frames
+                import random
+                frame_indices = list(range(len(self.data_manager.data_list)))
+                random.shuffle(frame_indices)
+                
+                # Calculate split points
+                train_count = int(len(frame_indices) * ratios[0] / 100)
+                val_count = int(len(frame_indices) * ratios[1] / 100)
+                
+                # Assign datasets
+                self.data_splits = {}
+                for i, frame_idx in enumerate(frame_indices):
+                    if i < train_count:
+                        self.data_splits[frame_idx] = 'TRAIN'
+                    elif i < train_count + val_count:
+                        self.data_splits[frame_idx] = 'VALIDATION'
+                    else:
+                        self.data_splits[frame_idx] = 'TEST'
+                
+                # Update status display
+                self.update_status()
+                
+                popup.destroy()
+                messagebox.showinfo("Success", 
+                    f"Data split completed!\n"
+                    f"Train: {train_count} frames\n"
+                    f"Validation: {val_count} frames\n"
+                    f"Test: {len(frame_indices) - train_count - val_count} frames")
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to split data: {str(e)}")
+        
+        def cancel_split():
+            popup.destroy()
+        
+        # Button frame
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(pady=(10, 0))
+        
+        ttk.Button(button_frame, text="Split", command=perform_split, 
+                  width=10).pack(side='left', padx=(0, 10))
+        ttk.Button(button_frame, text="Cancel", command=cancel_split, 
+                  width=10).pack(side='left')
+        
+        # Initial preview update
+        update_preview()
+        
+        # Bind Escape key
+        popup.bind('<Escape>', lambda e: cancel_split())
+    
+    def move_to_next_set(self):
+        """Move to the next frame in the current dataset"""
+        if not self.data_splits:
+            messagebox.showinfo("Info", "No data splits defined. Use 'Split Data' first.")
+            return
+        
+        current_frame = self.data_manager._pointer
+        current_set = self.data_splits.get(current_frame, 'UNASSIGNED')
+        
+        # Find all frames in the same set
+        same_set_frames = [idx for idx, dataset in self.data_splits.items() if dataset == current_set]
+        same_set_frames.sort()
+        
+        if not same_set_frames:
+            messagebox.showinfo("Info", f"No frames found in {current_set} set.")
+            return
+        
+        # Find current position and move to next
+        try:
+            current_pos = same_set_frames.index(current_frame)
+            next_pos = (current_pos + 1) % len(same_set_frames)
+            next_frame = same_set_frames[next_pos]
+            
+            # Navigate to next frame
+            self.data_manager._pointer = next_frame
+            self.data_manager.dataframe = self.data_manager.data_list[next_frame]
+            self.visualize()
+            self.update_status()
+            
+            print(f"Moved to next {current_set} frame: {next_frame} ({next_pos + 1}/{len(same_set_frames)})")
+            
+        except ValueError:
+            # Current frame not in the set, move to first frame of the set
+            self.data_manager._pointer = same_set_frames[0]
+            self.data_manager.dataframe = self.data_manager.data_list[same_set_frames[0]]
+            self.visualize()
+            self.update_status()
+            
+            print(f"Moved to first {current_set} frame: {same_set_frames[0]} (1/{len(same_set_frames)})")
     
     # Augmentation methods - Rotation only
     

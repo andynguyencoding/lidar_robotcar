@@ -81,6 +81,10 @@ class UIManager:
         self.show_pred_vel = tk.BooleanVar(value=True)
         self.show_forward_dir = tk.BooleanVar(value=True)
         
+        # Data splitting variables
+        self.data_splits = {}  # Will store frame_id -> split_type mapping
+        self.split_ratios = [70, 20, 10]  # Default train:validation:test ratios
+        
         # Create menu bar
         self.create_menu_bar()
         
@@ -105,11 +109,15 @@ class UIManager:
     
     def setup_controls_panel(self, parent):
         """Setup the controls panel"""
-        controls_panel = ttk.LabelFrame(parent, text="Controls", padding=5)
-        controls_panel.pack(fill='x', pady=(0, 5))
+        controls_container = ttk.Frame(parent)
+        controls_container.pack(fill='x', pady=(0, 5))
+        
+        # Left controls panel
+        left_controls = ttk.LabelFrame(controls_container, text="Navigation & Controls", padding=5)
+        left_controls.pack(side='left', fill='both', expand=True, padx=(0, 5))
         
         # First row - main control buttons
-        button_frame = ttk.Frame(controls_panel)
+        button_frame = ttk.Frame(left_controls)
         button_frame.pack(fill='x')
         
         self.play_pause_button = ttk.Button(button_frame, text="▶ Play", 
@@ -130,19 +138,8 @@ class UIManager:
                                      command=self.callbacks.get('toggle_inspect'), width=12)
         self.mode_button.pack(side='left', padx=(0, 5))
         
-        ttk.Button(button_frame, text="Flip H", 
-                  command=self.callbacks.get('flip_horizontal'), width=8).pack(side='left', padx=(0, 2))
-        ttk.Button(button_frame, text="Flip V", 
-                  command=self.callbacks.get('flip_vertical'), width=8).pack(side='left', padx=(0, 5))
-        
-        # Checkbox for "Apply to All Frames"
-        self.flip_all_var = tk.BooleanVar()
-        self.flip_all_checkbox = ttk.Checkbutton(button_frame, text="All", 
-                                               variable=self.flip_all_var, width=4)
-        self.flip_all_checkbox.pack(side='left', padx=(0, 5))
-        
         # Frame input row
-        frame_input_frame = ttk.Frame(controls_panel)
+        frame_input_frame = ttk.Frame(left_controls)
         frame_input_frame.pack(fill='x', pady=(5, 0))
         
         ttk.Label(frame_input_frame, text="Frame:", width=6).pack(side='left', padx=(0, 5))
@@ -153,7 +150,7 @@ class UIManager:
         self.total_frames_label.pack(side='left', padx=(5, 0))
         
         # Modified frames navigation
-        self.modified_button_frame = ttk.Frame(controls_panel)
+        self.modified_button_frame = ttk.Frame(left_controls)
         self.modified_button_frame.pack(fill='x', pady=(5, 0))
         
         self.first_modified_button = ttk.Button(self.modified_button_frame, text="⏮ First Mod", 
@@ -165,15 +162,34 @@ class UIManager:
         self.last_modified_button = ttk.Button(self.modified_button_frame, text="Last Mod ⏭", 
                                              command=self.callbacks.get('last_modified_frame'), width=12)
         
-        # Shortcuts info
-        shortcuts_frame = ttk.Frame(controls_panel)
-        shortcuts_frame.pack(fill='x', pady=(5, 0))
+        # Right controls panel - Data Management & Flipping
+        right_controls = ttk.LabelFrame(controls_container, text="Data Management", padding=5)
+        right_controls.pack(side='right', fill='y')
         
-        shortcuts_label = ttk.Label(shortcuts_frame, 
-                                   text="💡 Shortcuts: Space=Play/Next | I=Mode | H=Flip H | V=Flip V | R=Replace | U=Undo | ←→=Prev/Next | Home/End=First/Last | ↑↓=Prev/Next Modified | PgUp/PgDn=First/Last Modified | 🤖 AI Menu: Load models for predictions", 
-                                   font=('Arial', 8), foreground='navy', justify='left', 
-                                   wraplength=800)
-        shortcuts_label.pack(anchor='w')
+        # Flipping controls
+        flip_frame = ttk.Frame(right_controls)
+        flip_frame.pack(fill='x', pady=(0, 5))
+        
+        ttk.Button(flip_frame, text="Flip H", 
+                  command=self.callbacks.get('flip_horizontal'), width=8).pack(side='left', padx=(0, 2))
+        ttk.Button(flip_frame, text="Flip V", 
+                  command=self.callbacks.get('flip_vertical'), width=8).pack(side='left', padx=(0, 5))
+        
+        # Checkbox for "Apply to All Frames"
+        self.flip_all_var = tk.BooleanVar()
+        self.flip_all_checkbox = ttk.Checkbutton(flip_frame, text="All", 
+                                               variable=self.flip_all_var, width=4)
+        self.flip_all_checkbox.pack(side='left', padx=(0, 5))
+        
+        # Data splitting controls
+        split_frame = ttk.Frame(right_controls)
+        split_frame.pack(fill='x', pady=(5, 5))
+        
+        ttk.Button(split_frame, text="📊 Split Data", 
+                  command=self.callbacks.get('split_data'), width=12).pack(side='left', padx=(0, 5))
+        
+        ttk.Button(split_frame, text="🔄 Move Set", 
+                  command=self.callbacks.get('move_to_next_set'), width=12).pack(side='left')
     
     def setup_status_panel(self, parent):
         """Setup the status panel"""
@@ -412,6 +428,8 @@ class UIManager:
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Help", menu=help_menu)
+        help_menu.add_command(label="Controls...", command=self.callbacks.get('show_controls_dialog'))
+        help_menu.add_separator()
         help_menu.add_command(label="About...", command=self.callbacks.get('show_about_dialog'))
     
     def bind_events(self):
