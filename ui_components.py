@@ -31,6 +31,10 @@ class UIManager:
         self.show_pred_vel = None
         self.show_forward_dir = None
         
+        # Dataset navigation variables
+        self.selected_dataset = None
+        self.dataset_radio_frame = None
+        
         # UI components
         self.total_frames_label = None
         self.frame_entry = None
@@ -80,6 +84,9 @@ class UIManager:
         self.show_prev_vel = tk.BooleanVar(value=True)
         self.show_pred_vel = tk.BooleanVar(value=True)
         self.show_forward_dir = tk.BooleanVar(value=True)
+        
+        # Dataset navigation variables
+        self.selected_dataset = tk.StringVar(value="TRAIN")  # Default to train set
         
         # Data splitting variables
         self.data_splits = {}  # Will store frame_id -> split_type mapping
@@ -190,6 +197,21 @@ class UIManager:
         
         ttk.Button(split_frame, text="🔄 Move Set", 
                   command=self.callbacks.get('move_to_next_set'), width=12).pack(side='left')
+        
+        # Dataset selection radio buttons (visible below Split Data and Move Set buttons)
+        self.dataset_radio_frame = ttk.LabelFrame(right_controls, text="Navigate Dataset", padding=3)
+        self.dataset_radio_frame.pack(fill='x', pady=(5, 0))  # Pack immediately to make visible
+        
+        # Add trace for dataset selection changes
+        self.selected_dataset.trace('w', lambda *args: self.callbacks.get('on_dataset_selection_changed', lambda: None)())
+        
+        # Radio buttons for dataset selection
+        ttk.Radiobutton(self.dataset_radio_frame, text="Train", variable=self.selected_dataset, 
+                       value="TRAIN", width=8).pack(side='left', padx=(0, 2))
+        ttk.Radiobutton(self.dataset_radio_frame, text="Val", variable=self.selected_dataset, 
+                       value="VALIDATION", width=6).pack(side='left', padx=(0, 2))
+        ttk.Radiobutton(self.dataset_radio_frame, text="Test", variable=self.selected_dataset, 
+                       value="TEST", width=6).pack(side='left')
     
     def setup_status_panel(self, parent):
         """Setup the status panel"""
@@ -201,6 +223,16 @@ class UIManager:
         status_label = ttk.Label(status_frame, textvariable=self.status_var, 
                  font=('TkDefaultFont', 9), wraplength=800, anchor='e', justify='right')
         status_label.pack(fill='x')
+    
+    def show_dataset_radio_buttons(self):
+        """Show the dataset selection radio buttons after data split"""
+        if self.dataset_radio_frame:
+            self.dataset_radio_frame.pack(fill='x', pady=(5, 0))
+    
+    def hide_dataset_radio_buttons(self):
+        """Hide the dataset selection radio buttons"""
+        if self.dataset_radio_frame:
+            self.dataset_radio_frame.pack_forget()
     
     def setup_content_panel(self, parent):
         """Setup the main content panel"""

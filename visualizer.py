@@ -75,6 +75,10 @@ class VisualizerWindow:
         self.data_splits = {}  # Will store frame_id -> split_type mapping
         self.split_ratios = [70, 20, 10]  # Default train:validation:test ratios
         
+        # Dataset navigation variables
+        self.selected_dataset = tk.StringVar(value="TRAIN")  # Default to train set
+        self.dataset_radio_frame = None  # Will hold the radio button frame
+        
         self.root.geometry("850x750")  # Reduced size for better usability
         self.root.resizable(True, True)  # Make window resizable
         self.root.minsize(600, 500)  # Set minimum size
@@ -262,6 +266,20 @@ class VisualizerWindow:
         
         ttk.Button(split_frame, text="🔄 Move Set", 
                   command=self.move_to_next_set, width=12).pack(side='left')
+        
+        # Dataset selection radio buttons (visible below Split Data and Move Set buttons)
+        self.dataset_radio_frame = ttk.LabelFrame(right_controls, text="Navigate Dataset", padding=3)
+        self.dataset_radio_frame.pack(fill='x', pady=(5, 0))  # Pack immediately to make visible
+        
+        self.selected_dataset.trace('w', self.on_dataset_selection_changed)
+        
+        # Radio buttons for dataset selection
+        ttk.Radiobutton(self.dataset_radio_frame, text="Train", variable=self.selected_dataset, 
+                       value="TRAIN", width=8).pack(side='left', padx=(0, 2))
+        ttk.Radiobutton(self.dataset_radio_frame, text="Val", variable=self.selected_dataset, 
+                       value="VALIDATION", width=6).pack(side='left', padx=(0, 2))
+        ttk.Radiobutton(self.dataset_radio_frame, text="Test", variable=self.selected_dataset, 
+                       value="TEST", width=6).pack(side='left')
         
         # Status display - MUST be packed before content_frame when using side='bottom'
         status_frame = ttk.Frame(main_frame)
@@ -661,82 +679,86 @@ class VisualizerWindow:
     
     def prev_frame(self):
         """Move to previous frame in inspect mode"""
-        if self.inspect_mode and self.data_manager.has_prev():
-            # Store current angular velocity as previous before moving
-            self.update_previous_angular_velocity()
+        if not self.inspect_mode:
+            return
             
-            # Move back one frame using DataManager's prev method
+        # Check if dataset radio buttons are visible (data has been split)
+        if self.dataset_radio_frame.winfo_manager():
+            self.navigate_dataset_frame('prev')
+        elif self.data_manager.has_prev():
+            # Original navigation logic
+            self.update_previous_angular_velocity()
             self.data_manager.prev()
             
-            # Update display
             self.distances = self.data_manager.dataframe
             if len(self.distances) == LIDAR_RESOLUTION + 1:
                 self.render_frame()
                 self.update_inputs()
             
-            # Update button states after moving
             self.update_button_states()
-            
             print(f"Moved to previous frame: {self.data_manager.read_pos + 1}/{len(self.data_manager.lines)}")
     
     def next_frame(self):
         """Move to next frame in inspect mode"""
-        if self.inspect_mode and self.data_manager.has_next():
-            # Store current angular velocity as previous before moving
-            self.update_previous_angular_velocity()
+        if not self.inspect_mode:
+            return
             
-            # Move forward one frame using DataManager's next method
+        # Check if dataset radio buttons are visible (data has been split)
+        if self.dataset_radio_frame.winfo_manager():
+            self.navigate_dataset_frame('next')
+        elif self.data_manager.has_next():
+            # Original navigation logic
+            self.update_previous_angular_velocity()
             self.data_manager.next()
             
-            # Update display
             self.distances = self.data_manager.dataframe
             if len(self.distances) == LIDAR_RESOLUTION + 1:
                 self.render_frame()
                 self.update_inputs()
             
-            # Update button states after moving
             self.update_button_states()
-            
             print(f"Moved to next frame: {self.data_manager.read_pos + 1}/{len(self.data_manager.lines)}")
 
     def first_frame(self):
         """Jump to first frame in inspect mode"""
-        if self.inspect_mode:
-            # Store current angular velocity as previous before moving
-            self.update_previous_angular_velocity()
+        if not self.inspect_mode:
+            return
             
-            # Jump to first frame using DataManager's first method
+        # Check if dataset radio buttons are visible (data has been split)
+        if self.dataset_radio_frame.winfo_manager():
+            self.navigate_dataset_frame('first')
+        else:
+            # Original navigation logic
+            self.update_previous_angular_velocity()
             self.data_manager.first()
             
-            # Update display
             self.distances = self.data_manager.dataframe
             if len(self.distances) == LIDAR_RESOLUTION + 1:
                 self.render_frame()
                 self.update_inputs()
             
-            # Update button states after moving
             self.update_button_states()
-            
             print(f"Jumped to first frame: {self.data_manager.read_pos + 1}/{len(self.data_manager.lines)}")
 
     def last_frame(self):
         """Jump to last frame in inspect mode"""
-        if self.inspect_mode:
-            # Store current angular velocity as previous before moving
-            self.update_previous_angular_velocity()
+        if not self.inspect_mode:
+            return
             
-            # Jump to last frame using DataManager's last method
+        # Check if dataset radio buttons are visible (data has been split)
+        if self.dataset_radio_frame.winfo_manager():
+            self.navigate_dataset_frame('last')
+        else:
+            # Original navigation logic
+            self.update_previous_angular_velocity()
             self.data_manager.last()
             
-            # Update display
             self.distances = self.data_manager.dataframe
             if len(self.distances) == LIDAR_RESOLUTION + 1:
                 self.render_frame()
                 self.update_inputs()
             
-            # Update button states after moving
             self.update_button_states()
-            
             print(f"Jumped to last frame: {self.data_manager.read_pos + 1}/{len(self.data_manager.lines)}")
     
     def advance_frame(self):
@@ -1429,7 +1451,19 @@ class VisualizerWindow:
         split_text = ""
         if self.data_splits and hasattr(self.data_manager, '_pointer'):
             current_split = self.data_splits.get(self.data_manager._pointer, 'UNASSIGNED')
-            split_text = f" | Set: {current_split}"
+            
+            # If radio buttons are visible, show dataset navigation info
+            if self.dataset_radio_frame and self.dataset_radio_frame.winfo_manager():
+                selected_dataset = self.selected_dataset.get()
+                dataset_frames = self.get_dataset_frames(selected_dataset)
+                try:
+                    current_pos = dataset_frames.index(self.data_manager._pointer) + 1
+                    total_in_set = len(dataset_frames)
+                    split_text = f" | Navigating: {selected_dataset} ({current_pos}/{total_in_set}) | Current: {current_split}"
+                except ValueError:
+                    split_text = f" | Navigating: {selected_dataset} | Current: {current_split}"
+            else:
+                split_text = f" | Set: {current_split}"
         
         self.status_var.set(f"Data: {os.path.basename(self.config['data_file'])} | Mode: {mode_text} | Data: {data_text}{split_text}")
     
@@ -3151,6 +3185,81 @@ or contact the development team.
         
         # Bind Escape key
         popup.bind('<Escape>', lambda e: cancel_split())
+    
+    def on_dataset_selection_changed(self, *args):
+        """Handle dataset selection change"""
+        print(f"Dataset selection changed to: {self.selected_dataset.get()}")
+        # Update status to reflect current dataset selection
+        self.update_status()
+    
+    def get_dataset_frames(self, dataset_type=None):
+        """Get all frame indices for a specific dataset type"""
+        if not self.data_splits:
+            return list(range(len(self.data_manager.data_list)))
+        
+        if dataset_type is None:
+            dataset_type = self.selected_dataset.get()
+        
+        # Convert dataset_type to lowercase for comparison since data_splits stores lowercase values
+        dataset_type_lower = dataset_type.lower()
+        
+        frames = [idx for idx, split_type in self.data_splits.items() if split_type == dataset_type_lower]
+        return sorted(frames)
+    
+    def navigate_dataset_frame(self, direction):
+        """Navigate within the selected dataset"""
+        if not self.data_splits:
+            # If no splits, use normal navigation
+            if direction == 'next':
+                self.next_frame()
+            elif direction == 'prev':
+                self.prev_frame()
+            elif direction == 'first':
+                self.first_frame()
+            elif direction == 'last':
+                self.last_frame()
+            return
+        
+        dataset_frames = self.get_dataset_frames()
+        if not dataset_frames:
+            print(f"No frames in {self.selected_dataset.get()} dataset")
+            return
+        
+        current_frame = self.data_manager._pointer
+        
+        try:
+            current_idx = dataset_frames.index(current_frame)
+        except ValueError:
+            # Current frame not in selected dataset, go to first frame
+            current_idx = -1
+            direction = 'first'
+        
+        # Navigate within dataset
+        if direction == 'next':
+            new_idx = min(current_idx + 1, len(dataset_frames) - 1)
+        elif direction == 'prev':
+            new_idx = max(current_idx - 1, 0)
+        elif direction == 'first':
+            new_idx = 0
+        elif direction == 'last':
+            new_idx = len(dataset_frames) - 1
+        else:
+            return
+        
+        # Move to the new frame
+        target_frame = dataset_frames[new_idx]
+        self.update_previous_angular_velocity()
+        self.data_manager._pointer = target_frame
+        self.data_manager.dataframe = self.data_manager.data_list[target_frame]
+        
+        # Update display
+        self.distances = self.data_manager.dataframe
+        if len(self.distances) == LIDAR_RESOLUTION + 1:
+            self.render_frame()
+            self.update_inputs()
+        
+        self.update_button_states()
+        print(f"Navigated to {self.selected_dataset.get()} frame {new_idx + 1}/{len(dataset_frames)} (global frame {target_frame + 1})")
     
     def move_to_next_set(self):
         """Move to the next frame in the current dataset"""
