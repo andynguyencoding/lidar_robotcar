@@ -123,13 +123,9 @@ class VisualizationRenderer:
                 
             a = distance_value * dynamic_scale
             
-            # Choose coordinates based on augmented mode
-            if augmented_mode:
-                x_coord = math.cos(x / 180 * math.pi) * a + center_x
-                y_coord = math.sin(x / 180 * math.pi) * a + center_y
-            else:
-                x_coord = math.cos(x / 180 * math.pi) * a + center_x
-                y_coord = -math.sin(x / 180 * math.pi) * a + center_y
+            # Use standard coordinates - the data itself has been flipped if needed
+            x_coord = math.cos(x / 180 * math.pi) * a + center_x
+            y_coord = -math.sin(x / 180 * math.pi) * a + center_y
             
             if x in DECISIVE_FRAME_POSITIONS:
                 # Draw line and important point

@@ -358,6 +358,12 @@ class DataManager(Observer):
             with open(self.in_file, 'w') as f:
                 f.writelines(self.lines)
             
+            print(f"DEBUG: Saved {len(self.lines)} lines to {self.in_file}")
+            print(f"DEBUG: Modified frames: {self._modified_frames}")
+            if self._modified_frames:
+                first_modified = self._modified_frames[0]
+                print(f"DEBUG: First modified frame ({first_modified}) data: {self.lines[first_modified][:100]}...")
+            
             # Reopen the input file for continued reading
             self.infile = open(self.in_file, 'r')
             return True

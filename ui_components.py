@@ -129,10 +129,10 @@ class UIManager:
                                      command=self.callbacks.get('toggle_inspect'), width=12)
         self.mode_button.pack(side='left', padx=(0, 5))
         
-        ttk.Button(button_frame, text="Augmented", 
-                  command=self.callbacks.get('toggle_augmented'), width=12).pack(side='left', padx=(0, 5))
-        ttk.Button(button_frame, text="Quit", 
-                  command=self.callbacks.get('quit_visualizer'), width=12).pack(side='left', padx=(0, 5))
+        ttk.Button(button_frame, text="Flip H", 
+                  command=self.callbacks.get('flip_horizontal'), width=8).pack(side='left', padx=(0, 2))
+        ttk.Button(button_frame, text="Flip V", 
+                  command=self.callbacks.get('flip_vertical'), width=8).pack(side='left', padx=(0, 5))
         
         # Frame input row
         frame_input_frame = ttk.Frame(controls_panel)
@@ -163,7 +163,7 @@ class UIManager:
         shortcuts_frame.pack(fill='x', pady=(5, 0))
         
         shortcuts_label = ttk.Label(shortcuts_frame, 
-                                   text="💡 Shortcuts: Space=Play/Next | I=Mode | A=Augmented | Q=Quit | R=Replace | U=Undo | ←→=Prev/Next | Home/End=First/Last | ↑↓=Prev/Next Modified | PgUp/PgDn=First/Last Modified | 🤖 AI Menu: Load models for predictions", 
+                                   text="💡 Shortcuts: Space=Play/Next | I=Mode | H=Flip H | V=Flip V | R=Replace | U=Undo | ←→=Prev/Next | Home/End=First/Last | ↑↓=Prev/Next Modified | PgUp/PgDn=First/Last Modified | 🤖 AI Menu: Load models for predictions", 
                                    font=('Arial', 8), foreground='navy', justify='left', 
                                    wraplength=800)
         shortcuts_label.pack(anchor='w')
@@ -374,6 +374,8 @@ class UIManager:
         file_menu.add_command(label="Save Data", command=self.callbacks.get('save_data'), accelerator="Ctrl+S")
         file_menu.add_separator()
         file_menu.add_command(label="Preferences...", command=self.callbacks.get('show_preferences_dialog'))
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=self.callbacks.get('quit_app'), accelerator="Ctrl+Q")
         
         # Data menu
         data_menu = tk.Menu(menubar, tearoff=0)
