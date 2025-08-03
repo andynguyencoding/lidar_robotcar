@@ -209,13 +209,13 @@ class UIManager:
         
         # Radio buttons for dataset selection
         ttk.Radiobutton(self.dataset_radio_frame, text="Original", variable=self.selected_dataset, 
-                       value="Original", width=7).pack(side='left', padx=(0, 2))
+                       value="Original", width=9).pack(side='left', padx=(0, 2))
         ttk.Radiobutton(self.dataset_radio_frame, text="Train", variable=self.selected_dataset, 
-                       value="Train", width=6).pack(side='left', padx=(0, 2))
+                       value="Train", width=7).pack(side='left', padx=(0, 2))
         ttk.Radiobutton(self.dataset_radio_frame, text="Val", variable=self.selected_dataset, 
-                       value="Validation", width=5).pack(side='left', padx=(0, 2))
+                       value="Validation", width=6).pack(side='left', padx=(0, 2))
         ttk.Radiobutton(self.dataset_radio_frame, text="Test", variable=self.selected_dataset, 
-                       value="Test", width=5).pack(side='left')
+                       value="Test", width=6).pack(side='left')
     
     def setup_status_panel(self, parent):
         """Setup the status panel"""
