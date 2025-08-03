@@ -257,13 +257,25 @@ class VisualizerWindow:
     # Frame navigation methods
     def prev_frame(self):
         """Move to previous frame in inspect mode"""
+        print(f"DEBUG: prev_frame() called")
+        
         if not self.inspect_mode:
+            print(f"DEBUG: Not in inspect mode, returning")
             return
-            
+        
+        print(f"DEBUG: current_dataset_type = {self.current_dataset_type}")
+        print(f"DEBUG: hasattr(self, 'train_ids') = {hasattr(self, 'train_ids')}")
+        
         # Check if we're in a split dataset mode
         if self.current_dataset_type != 'main' and hasattr(self, 'train_ids'):
-            self._navigate_dataset_frame('prev')
+            print(f"DEBUG: Using dataset navigation for {self.current_dataset_type}")
+            current_pointer = self._get_current_dataset_pointer()
+            print(f"DEBUG: Current pointer before navigation: {current_pointer}")
+            
+            result = self._navigate_dataset_frame('prev')
+            print(f"DEBUG: _navigate_dataset_frame returned: {result}")
         elif self.frame_navigator.prev_frame():
+            print(f"DEBUG: Using frame navigator (main dataset)")
             # Original navigation logic for main dataset
             self.frame_navigator.update_previous_angular_velocity(self.distances, self.augmented_mode)
             
@@ -274,16 +286,30 @@ class VisualizerWindow:
             
             self.update_button_states()
             print(f"Moved to previous frame: {self.data_manager.read_pos + 1}/{len(self.data_manager.lines)}")
+        else:
+            print(f"DEBUG: No navigation occurred - frame_navigator.prev_frame() returned False")
 
     def next_frame(self):
         """Move to next frame in inspect mode"""
+        print(f"DEBUG: next_frame() called")
+        
         if not self.inspect_mode:
+            print(f"DEBUG: Not in inspect mode, returning")
             return
+        
+        print(f"DEBUG: current_dataset_type = {self.current_dataset_type}")
+        print(f"DEBUG: hasattr(self, 'train_ids') = {hasattr(self, 'train_ids')}")
             
         # Check if we're in a split dataset mode
         if self.current_dataset_type != 'main' and hasattr(self, 'train_ids'):
-            self._navigate_dataset_frame('next')
+            print(f"DEBUG: Using dataset navigation for {self.current_dataset_type}")
+            current_pointer = self._get_current_dataset_pointer()
+            print(f"DEBUG: Current pointer before navigation: {current_pointer}")
+            
+            result = self._navigate_dataset_frame('next')
+            print(f"DEBUG: _navigate_dataset_frame returned: {result}")
         elif self.frame_navigator.next_frame():
+            print(f"DEBUG: Using frame navigator (main dataset)")
             # Original navigation logic for main dataset
             self.frame_navigator.update_previous_angular_velocity(self.distances, self.augmented_mode)
             
@@ -294,23 +320,37 @@ class VisualizerWindow:
             
             self.update_button_states()
             print(f"Moved to next frame: {self.data_manager.read_pos + 1}/{len(self.data_manager.lines)}")
+        else:
+            print(f"DEBUG: No navigation occurred - frame_navigator.next_frame() returned False")
     
     def _navigate_dataset_frame(self, direction):
         """Navigate within the current ID-based dataset"""
         dataset_ids = self._get_current_dataset_ids()
-        old_position = self.current_dataset_position
         
-        if direction == 'prev' and self.current_dataset_position > 0:
-            self.current_dataset_position -= 1
-        elif direction == 'next' and self.current_dataset_position < len(dataset_ids) - 1:
-            self.current_dataset_position += 1
+        # Get current pointer and update based on direction
+        current_pointer = self._get_current_dataset_pointer()
+        old_position = current_pointer
+        
+        print(f"DEBUG: _navigate_dataset_frame({direction}) - current_pointer={current_pointer}, dataset_size={len(dataset_ids)}")
+        
+        if direction == 'prev' and current_pointer > 0:
+            new_position = current_pointer - 1
+        elif direction == 'next' and current_pointer < len(dataset_ids) - 1:
+            new_position = current_pointer + 1
         else:
-            print(f"Navigation blocked: {direction} not possible from position {self.current_dataset_position} in {self.current_dataset_type} dataset")
-            return  # Can't navigate further
+            print(f"Navigation blocked: {direction} not possible from position {current_pointer} in {self.current_dataset_type} dataset")
+            return False  # Return False when navigation is blocked
+        
+        # Set the new position using the dataset pointer system
+        self._set_current_dataset_pointer(new_position)
+        
+        # Get updated position for display
+        self.current_dataset_position = new_position  # Keep for backward compatibility
+        new_pointer = self._get_current_dataset_pointer()
         
         # Navigate to the frame ID in the original dataset
         frame_id = self._get_current_frame_id()
-        print(f"Navigation: {self.current_dataset_type.upper()} {old_position}→{self.current_dataset_position} (Frame ID: {frame_id})")
+        print(f"Navigation: {self.current_dataset_type.upper()} {old_position}→{new_pointer} (Frame ID: {frame_id})")
         self._navigate_to_frame_id(frame_id)
         
         # Update the display
@@ -320,7 +360,8 @@ class VisualizerWindow:
             self.update_inputs()
         
         self.update_button_states()
-        print(f"Dataset navigation: {self.current_dataset_type.upper()} frame {self.current_dataset_position + 1}/{len(dataset_ids)} (ID: {frame_id})")
+        print(f"Dataset navigation: {self.current_dataset_type.upper()} frame {new_pointer + 1}/{len(dataset_ids)} (ID: {frame_id})")
+        return True  # Return True when navigation is successful
             
         # Check if data has been split into datasets
         if hasattr(self.ui_manager, 'data_splits') and self.ui_manager.data_splits:
@@ -2669,6 +2710,16 @@ MOUSE CONTROLS:
                     # Create separate datasets
                     self._create_dataset_splits(frame_indices, train_count, val_count)
                     
+                    # Initialize dataset pointers to 0
+                    self.train_pointer = 0
+                    self.val_pointer = 0
+                    self.test_pointer = 0
+                    self.main_pointer = self.data_manager._pointer  # Keep main dataset position
+                    
+                    # Sync current_dataset_position if we're in a dataset
+                    if self.current_dataset_type != 'main':
+                        self.current_dataset_position = self._get_current_dataset_pointer()
+                    
                     # Clear old split mapping (not needed with new approach)
                     self.ui_manager.data_splits.clear()
                     
@@ -2855,9 +2906,15 @@ MOUSE CONTROLS:
     def _sync_data_manager_to_current_frame(self):
         """Sync the data manager pointer to the current global frame ID"""
         global_frame_id = self._get_current_global_frame_id()
+        print(f"DEBUG: _sync_data_manager_to_current_frame() - global_frame_id = {global_frame_id}")
+        print(f"DEBUG: Before sync - data_manager._pointer = {self.data_manager._pointer}")
+        
         self.data_manager._pointer = global_frame_id
         # Invalidate dataframe cache to force re-reading
         self.data_manager._read_pos = global_frame_id - 1
+        
+        print(f"DEBUG: After sync - data_manager._pointer = {self.data_manager._pointer}")
+        print(f"DEBUG: data_manager.has_prev() = {self.data_manager.has_prev()}")
         print(f"DEBUG: Synced data_manager pointer to global frame {global_frame_id}")
     
     def _get_current_dataset_ids(self):
@@ -2874,9 +2931,12 @@ MOUSE CONTROLS:
     
     def _get_current_frame_id(self):
         """Get the actual frame ID in the original dataset"""
+        # Use the dataset pointer system instead of current_dataset_position
+        current_pointer = self._get_current_dataset_pointer()
         dataset_ids = self._get_current_dataset_ids()
-        if self.current_dataset_position < len(dataset_ids):
-            return dataset_ids[self.current_dataset_position]
+        
+        if current_pointer < len(dataset_ids):
+            return dataset_ids[current_pointer]
         return 0
     
     def _navigate_to_frame_id(self, frame_id):
@@ -2884,6 +2944,8 @@ MOUSE CONTROLS:
         if 0 <= frame_id < len(self.main_dataset.lines):
             self.main_dataset._pointer = frame_id
             self.data_manager._pointer = frame_id  # Keep data_manager in sync
+            # Reset read position to force re-reading of the dataframe
+            self.data_manager._read_pos = frame_id - 1
 
     def on_dataset_selection_changed(self):
         """Handle dataset selection change - switch to ID-based dataset with separate pointers"""
@@ -2896,16 +2958,20 @@ MOUSE CONTROLS:
             # Save current position in old dataset's pointer
             if old_dataset == 'main':
                 self.main_pointer = self.data_manager._pointer
+                print(f"DEBUG: Saved main_pointer = {self.main_pointer}")
             elif old_dataset == 'train':
                 # Current position within train dataset
                 if self.data_manager._pointer in self.train_ids:
                     self.train_pointer = self.train_ids.index(self.data_manager._pointer)
+                    print(f"DEBUG: Saved train_pointer = {self.train_pointer} (global frame {self.data_manager._pointer})")
             elif old_dataset == 'validation':
                 if self.data_manager._pointer in self.val_ids:
                     self.val_pointer = self.val_ids.index(self.data_manager._pointer)
+                    print(f"DEBUG: Saved val_pointer = {self.val_pointer} (global frame {self.data_manager._pointer})")
             elif old_dataset == 'test':
                 if self.data_manager._pointer in self.test_ids:
                     self.test_pointer = self.test_ids.index(self.data_manager._pointer)
+                    print(f"DEBUG: Saved test_pointer = {self.test_pointer} (global frame {self.data_manager._pointer})")
             
             print(f"Saved {old_dataset} pointer position")
             
@@ -2922,6 +2988,21 @@ MOUSE CONTROLS:
             # Restore position in new dataset using its saved pointer
             current_pointer = self._get_current_dataset_pointer()
             print(f"Restoring {self.current_dataset_type} dataset to pointer position: {current_pointer}")
+            
+            # Special handling for main dataset
+            if self.current_dataset_type == 'main':
+                print(f"DEBUG: For main dataset, main_pointer = {self.main_pointer}")
+                print(f"DEBUG: data_manager._pointer before sync = {self.data_manager._pointer}")
+                
+                # Fix for main_pointer not being properly saved:
+                # If main_pointer is 0 but data_manager._pointer is not, use data_manager value
+                if self.main_pointer == 0 and self.data_manager._pointer > 0:
+                    print(f"DEBUG: Correcting main_pointer from 0 to {self.data_manager._pointer}")
+                    self.main_pointer = self.data_manager._pointer
+                    current_pointer = self.main_pointer
+            
+            # Sync current_dataset_position with the dataset pointer for backward compatibility
+            self.current_dataset_position = current_pointer
             
             # Sync data manager to the correct global frame
             self._sync_data_manager_to_current_frame()
@@ -3117,6 +3198,8 @@ MOUSE CONTROLS:
     # Update methods
     def update_button_states(self):
         """Update button states based on current mode"""
+        print(f"DEBUG: update_button_states() called - current_dataset_type = {self.current_dataset_type}")
+        
         if self.inspect_mode:
             # Show navigation buttons, hide play/pause
             self.ui_manager.play_pause_button.pack_forget()
@@ -3133,11 +3216,16 @@ MOUSE CONTROLS:
             self.ui_manager.last_modified_button.pack(side='left', padx=(0, 5))
             
             # Check if we're in dataset navigation mode
-            if hasattr(self.ui_manager, 'data_splits') and self.ui_manager.data_splits:
+            has_data_splits = hasattr(self.ui_manager, 'data_splits') and self.ui_manager.data_splits
+            print(f"DEBUG: has_data_splits = {has_data_splits}")
+            
+            if has_data_splits:
                 # Use dataset navigation logic
+                print(f"DEBUG: Using dataset navigation logic")
                 self._update_dataset_button_states()
             else:
                 # Use regular navigation logic
+                print(f"DEBUG: Using regular navigation logic")
                 self._update_regular_button_states()
         else:
             # Hide navigation buttons, show play/pause
@@ -3249,7 +3337,7 @@ MOUSE CONTROLS:
             # We're in dataset mode - show current dataset info
             if self.current_dataset_type != 'main':
                 dataset_ids = self._get_current_dataset_ids()
-                current_pos = self.current_dataset_position + 1
+                current_pos = self._get_current_dataset_pointer() + 1  # Use dataset pointer instead
                 total_in_set = len(dataset_ids)
                 current_frame_id = self._get_current_frame_id() + 1  # +1 for display
                 split_text = f" | Dataset: {self.current_dataset_type.upper()} ({current_pos}/{total_in_set}) | Frame ID: {current_frame_id}"

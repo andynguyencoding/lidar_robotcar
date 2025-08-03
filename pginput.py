@@ -202,6 +202,8 @@ class DataManager(Observer):
 
     def next(self):
         self._pointer += 1
+        # Reset read position to force re-reading of the dataframe
+        self._read_pos = self._pointer - 1
         return self._lidar_dataframe
 
     def has_prev(self):
