@@ -58,6 +58,20 @@ class VisualizerWindow:
         self.data_manager = DataManager(config['data_file'], 'data/run2/_out.txt', False)
         calculate_scale_factor(self.data_manager)
         
+        # Dataset management - ID-based approach for splits
+        self.main_dataset = self.data_manager  # Original full dataset (single source of truth)
+        self.train_ids = []      # List of frame IDs for train dataset
+        self.val_ids = []        # List of frame IDs for validation dataset  
+        self.test_ids = []       # List of frame IDs for test dataset
+        self.current_dataset_type = 'main'  # 'main', 'train', 'validation', 'test'
+        self.current_dataset_position = 0   # Position within current dataset
+        
+        # Separate pointers for each dataset to maintain navigation state
+        self.main_pointer = 0       # Pointer for original dataset
+        self.train_pointer = 0      # Pointer for train dataset (position within train_ids)
+        self.val_pointer = 0        # Pointer for validation dataset (position within val_ids)
+        self.test_pointer = 0       # Pointer for test dataset (position within test_ids)
+        
         # Store original title before adding asterisk
         self.original_title = f"Lidar Visualizer - {os.path.basename(config['data_file'])}"
         
@@ -76,7 +90,7 @@ class VisualizerWindow:
         self.split_ratios = [70, 20, 10]  # Default train:validation:test ratios
         
         # Dataset navigation variables
-        self.selected_dataset = tk.StringVar(value="TRAIN")  # Default to train set
+        self.selected_dataset = tk.StringVar(value="Original")  # Default to original dataset
         self.dataset_radio_frame = None  # Will hold the radio button frame
         
         self.root.geometry("850x750")  # Reduced size for better usability
@@ -186,9 +200,11 @@ class VisualizerWindow:
         controls_container = ttk.Frame(main_frame)
         controls_container.pack(fill='x', pady=(0, 5))
         
-        # Left controls panel - Navigation & Controls
+        # Left controls panel - Navigation & Controls - increased width to accommodate all controls including mode button
         left_controls = ttk.LabelFrame(controls_container, text="Navigation & Controls", padding=5)
-        left_controls.pack(side='left', fill='both', expand=True, padx=(0, 5))
+        left_controls.pack(side='left', fill='y', padx=(0, 5))
+        left_controls.configure(width=450)  # Increased width to show all controls including mode button
+        left_controls.pack_propagate(False)  # Prevent shrinking
         
         # First row - main control buttons
         button_frame = ttk.Frame(left_controls)
@@ -238,9 +254,9 @@ class VisualizerWindow:
         self.last_modified_button = ttk.Button(self.modified_button_frame, text="Last Mod ⏭", 
                                              command=self.last_modified_frame, width=12)
         
-        # Right controls panel - Data Management & Flipping
+        # Right controls panel - Data Management & Flipping - now expands to fill remaining space
         right_controls = ttk.LabelFrame(controls_container, text="Data Management", padding=5)
-        right_controls.pack(side='right', fill='y')
+        right_controls.pack(side='right', fill='both', expand=True)
         
         # Flipping controls
         flip_frame = ttk.Frame(right_controls)
@@ -274,12 +290,14 @@ class VisualizerWindow:
         self.selected_dataset.trace('w', self.on_dataset_selection_changed)
         
         # Radio buttons for dataset selection
+        ttk.Radiobutton(self.dataset_radio_frame, text="Original", variable=self.selected_dataset, 
+                       value="Original", width=7).pack(side='left', padx=(0, 2))
         ttk.Radiobutton(self.dataset_radio_frame, text="Train", variable=self.selected_dataset, 
-                       value="TRAIN", width=8).pack(side='left', padx=(0, 2))
+                       value="Train", width=6).pack(side='left', padx=(0, 2))
         ttk.Radiobutton(self.dataset_radio_frame, text="Val", variable=self.selected_dataset, 
-                       value="VALIDATION", width=6).pack(side='left', padx=(0, 2))
+                       value="Validation", width=5).pack(side='left', padx=(0, 2))
         ttk.Radiobutton(self.dataset_radio_frame, text="Test", variable=self.selected_dataset, 
-                       value="TEST", width=6).pack(side='left')
+                       value="Test", width=5).pack(side='left')
         
         # Status display - MUST be packed before content_frame when using side='bottom'
         status_frame = ttk.Frame(main_frame)
@@ -682,8 +700,8 @@ class VisualizerWindow:
         if not self.inspect_mode:
             return
             
-        # Check if dataset radio buttons are visible (data has been split)
-        if self.dataset_radio_frame.winfo_manager():
+        # Check if data has been split into datasets
+        if hasattr(self, 'data_splits') and self.data_splits:
             self.navigate_dataset_frame('prev')
         elif self.data_manager.has_prev():
             # Original navigation logic
@@ -703,8 +721,8 @@ class VisualizerWindow:
         if not self.inspect_mode:
             return
             
-        # Check if dataset radio buttons are visible (data has been split)
-        if self.dataset_radio_frame.winfo_manager():
+        # Check if data has been split into datasets
+        if hasattr(self, 'data_splits') and self.data_splits:
             self.navigate_dataset_frame('next')
         elif self.data_manager.has_next():
             # Original navigation logic
@@ -724,8 +742,8 @@ class VisualizerWindow:
         if not self.inspect_mode:
             return
             
-        # Check if dataset radio buttons are visible (data has been split)
-        if self.dataset_radio_frame.winfo_manager():
+        # Check if data has been split into datasets
+        if hasattr(self, 'data_splits') and self.data_splits:
             self.navigate_dataset_frame('first')
         else:
             # Original navigation logic
@@ -745,8 +763,8 @@ class VisualizerWindow:
         if not self.inspect_mode:
             return
             
-        # Check if dataset radio buttons are visible (data has been split)
-        if self.dataset_radio_frame.winfo_manager():
+        # Check if data has been split into datasets
+        if hasattr(self, 'data_splits') and self.data_splits:
             self.navigate_dataset_frame('last')
         else:
             # Original navigation logic
@@ -1402,19 +1420,52 @@ class VisualizerWindow:
                 self.last_modified_button.config(state='disabled')
             
             # Update navigation button states based on position
-            if not self.data_manager.has_prev():
-                self.prev_button.config(state='disabled')
-                self.first_button.config(state='disabled')
+            if hasattr(self, 'data_splits') and self.data_splits and self.current_dataset_type != 'main':
+                # Use dataset navigation logic with separate pointers
+                dataset_ids = self._get_current_dataset_ids()
+                if not dataset_ids:
+                    # No frames in current dataset - disable all
+                    self.prev_button.config(state='disabled')
+                    self.first_button.config(state='disabled')
+                    self.next_button.config(state='disabled')
+                    self.last_button.config(state='disabled')
+                else:
+                    # Use the separate dataset pointer
+                    current_pointer = self._get_current_dataset_pointer()
+                    total_frames = len(dataset_ids)
+                    
+                    print(f"DEBUG: Monolithic button state - Dataset: {self.current_dataset_type}, Pointer: {current_pointer}, Total: {total_frames}")
+                    
+                    # Check if we can go backward
+                    if current_pointer > 0:
+                        self.prev_button.config(state='normal')
+                        self.first_button.config(state='normal')
+                    else:
+                        self.prev_button.config(state='disabled')
+                        self.first_button.config(state='disabled')
+                    
+                    # Check if we can go forward
+                    if current_pointer < total_frames - 1:
+                        self.next_button.config(state='normal')
+                        self.last_button.config(state='normal')
+                    else:
+                        self.next_button.config(state='disabled')
+                        self.last_button.config(state='disabled')
             else:
-                self.prev_button.config(state='normal')
-                self.first_button.config(state='normal')
-                
-            if not self.data_manager.has_next():
-                self.next_button.config(state='disabled')
-                self.last_button.config(state='disabled')
-            else:
-                self.next_button.config(state='normal')
-                self.last_button.config(state='normal')
+                # Use regular navigation logic
+                if not self.data_manager.has_prev():
+                    self.prev_button.config(state='disabled')
+                    self.first_button.config(state='disabled')
+                else:
+                    self.prev_button.config(state='normal')
+                    self.first_button.config(state='normal')
+                    
+                if not self.data_manager.has_next():
+                    self.next_button.config(state='disabled')
+                    self.last_button.config(state='disabled')
+                else:
+                    self.next_button.config(state='normal')
+                    self.last_button.config(state='normal')
         else:
             # In continuous mode: show play/pause, hide navigation buttons
             self.first_button.pack_forget()
@@ -1447,23 +1498,26 @@ class VisualizerWindow:
         
         data_text = 'AUGMENTED' if self.augmented_mode else 'REAL'
         
-        # Add data split information if available
+        # Add dataset split information if data has been split
         split_text = ""
-        if self.data_splits and hasattr(self.data_manager, '_pointer'):
-            current_split = self.data_splits.get(self.data_manager._pointer, 'UNASSIGNED')
-            
-            # If radio buttons are visible, show dataset navigation info
-            if self.dataset_radio_frame and self.dataset_radio_frame.winfo_manager():
-                selected_dataset = self.selected_dataset.get()
-                dataset_frames = self.get_dataset_frames(selected_dataset)
-                try:
-                    current_pos = dataset_frames.index(self.data_manager._pointer) + 1
-                    total_in_set = len(dataset_frames)
-                    split_text = f" | Navigating: {selected_dataset} ({current_pos}/{total_in_set}) | Current: {current_split}"
-                except ValueError:
-                    split_text = f" | Navigating: {selected_dataset} | Current: {current_split}"
+        if hasattr(self, 'train_ids') and self.train_ids:
+            # We're in dataset mode - show current dataset info
+            if self.current_dataset_type != 'main':
+                dataset_ids = self._get_current_dataset_ids()
+                current_pos = self.current_dataset_position + 1
+                total_in_set = len(dataset_ids)
+                current_frame_id = self._get_current_frame_id() + 1  # +1 for display
+                split_text = f" | Dataset: {self.current_dataset_type.upper()} ({current_pos}/{total_in_set}) | Frame ID: {current_frame_id}"
             else:
-                split_text = f" | Set: {current_split}"
+                # Main dataset mode
+                current_pos = self.data_manager._pointer + 1
+                total_frames = len(self.data_manager.lines)
+                split_text = f" | Frame: {current_pos}/{total_frames}"
+        else:
+            # No splits created yet
+            current_pos = self.data_manager._pointer + 1
+            total_frames = len(self.data_manager.lines)
+            split_text = f" | Frame: {current_pos}/{total_frames}"
         
         self.status_var.set(f"Data: {os.path.basename(self.config['data_file'])} | Mode: {mode_text} | Data: {data_text}{split_text}")
     
@@ -3037,14 +3091,14 @@ or contact the development team.
     
     def split_data(self):
         """Split the data into train/validation/test sets"""
-        if not self.data_manager.data_list:
+        if not self.data_manager.lines:
             messagebox.showwarning("Warning", "No data loaded to split.")
             return
         
         # Create popup window
         popup = tk.Toplevel(self.root)
         popup.title("Split Data")
-        popup.geometry("350x300")
+        popup.geometry("400x350")
         popup.resizable(False, False)
         
         # Center the popup
@@ -3053,9 +3107,9 @@ or contact the development team.
         
         # Calculate center position
         popup.update_idletasks()
-        x = (popup.winfo_screenwidth() // 2) - (350 // 2)
-        y = (popup.winfo_screenheight() // 2) - (300 // 2)
-        popup.geometry(f"350x300+{x}+{y}")
+        x = (popup.winfo_screenwidth() // 2) - (400 // 2)
+        y = (popup.winfo_screenheight() // 2) - (350 // 2)
+        popup.geometry(f"400x350+{x}+{y}")
         
         main_frame = ttk.Frame(popup, padding=20)
         main_frame.pack(fill='both', expand=True)
@@ -3066,7 +3120,7 @@ or contact the development team.
         title_label.pack(pady=(0, 15))
         
         # Info
-        total_frames = len(self.data_manager.data_list)
+        total_frames = len(self.data_manager.lines)
         info_label = ttk.Label(main_frame, text=f"Total frames: {total_frames}")
         info_label.pack(pady=(0, 10))
         
@@ -3094,7 +3148,7 @@ or contact the development team.
         preview_label = ttk.Label(preview_frame, text="Preview:", font=('Arial', 10, 'bold'))
         preview_label.pack(anchor='w')
         
-        preview_text = tk.Text(preview_frame, height=4, width=40, state='disabled')
+        preview_text = tk.Text(preview_frame, height=4, width=45, state='disabled')
         preview_text.pack(pady=(5, 0))
         
         def update_preview(*args):
@@ -3138,22 +3192,25 @@ or contact the development team.
                 
                 # Create random assignment for all frames
                 import random
-                frame_indices = list(range(len(self.data_manager.data_list)))
+                frame_indices = list(range(len(self.data_manager.lines)))
                 random.shuffle(frame_indices)
                 
                 # Calculate split points
                 train_count = int(len(frame_indices) * ratios[0] / 100)
                 val_count = int(len(frame_indices) * ratios[1] / 100)
                 
-                # Assign datasets
-                self.data_splits = {}
-                for i, frame_idx in enumerate(frame_indices):
-                    if i < train_count:
-                        self.data_splits[frame_idx] = 'TRAIN'
-                    elif i < train_count + val_count:
-                        self.data_splits[frame_idx] = 'VALIDATION'
-                    else:
-                        self.data_splits[frame_idx] = 'TEST'
+                # Create separate datasets
+                self._create_dataset_splits(frame_indices, train_count, val_count)
+                
+                # Clear old split mapping (not needed with new approach)
+                self.data_splits.clear()
+                
+                # Mark that data has been split
+                self.data_splits = {'split': True}  # Flag to indicate split data exists
+                
+                # Show dataset radio buttons (if UI supports it)
+                if hasattr(self, 'show_dataset_radio_buttons'):
+                    self.show_dataset_radio_buttons()
                 
                 # Update status display
                 self.update_status()
@@ -3173,12 +3230,12 @@ or contact the development team.
         
         # Button frame
         button_frame = ttk.Frame(main_frame)
-        button_frame.pack(pady=(10, 0))
+        button_frame.pack(pady=(15, 10))
         
         ttk.Button(button_frame, text="Split", command=perform_split, 
-                  width=10).pack(side='left', padx=(0, 10))
+                  width=12).pack(side='left', padx=(0, 15))
         ttk.Button(button_frame, text="Cancel", command=cancel_split, 
-                  width=10).pack(side='left')
+                  width=12).pack(side='left')
         
         # Initial preview update
         update_preview()
@@ -3186,30 +3243,243 @@ or contact the development team.
         # Bind Escape key
         popup.bind('<Escape>', lambda e: cancel_split())
     
+    def _create_dataset_splits(self, frame_indices, train_count, val_count):
+        """Create ID-based dataset splits that reference the original data"""
+        # Create lists of frame IDs for each dataset
+        self.train_ids = frame_indices[:train_count]
+        self.val_ids = frame_indices[train_count:train_count + val_count]
+        self.test_ids = frame_indices[train_count + val_count:]
+        
+        print(f"\n=== DATASET SPLIT DEBUG ===")
+        print(f"Total frames to split: {len(frame_indices)}")
+        print(f"Train count: {train_count}, Val count: {val_count}, Test count: {len(self.test_ids)}")
+        
+        # Debug: Print first 10 IDs of each dataset
+        print(f"\nTrain IDs (first 10): {self.train_ids[:10]}")
+        print(f"Val IDs (first 10): {self.val_ids[:10]}")
+        print(f"Test IDs (first 10): {self.test_ids[:10]}")
+        
+        # Validation tests
+        self._validate_dataset_splits()
+        
+        print(f"✅ Created ID-based datasets - Train: {len(self.train_ids)} IDs, Val: {len(self.val_ids)} IDs, Test: {len(self.test_ids)} IDs")
+        print("=== END DATASET SPLIT DEBUG ===\n")
+    
+    def _validate_dataset_splits(self):
+        """Validate dataset splits for correctness"""
+        print("\n--- VALIDATION TESTS ---")
+        
+        # Test 1: Check for duplicates within each dataset
+        train_duplicates = len(self.train_ids) - len(set(self.train_ids))
+        val_duplicates = len(self.val_ids) - len(set(self.val_ids))
+        test_duplicates = len(self.test_ids) - len(set(self.test_ids))
+        
+        print(f"Test 1 - Duplicates within datasets:")
+        print(f"  Train duplicates: {train_duplicates}")
+        print(f"  Val duplicates: {val_duplicates}")
+        print(f"  Test duplicates: {test_duplicates}")
+        
+        if train_duplicates == 0 and val_duplicates == 0 and test_duplicates == 0:
+            print("  ✅ PASSED: No duplicates within individual datasets")
+        else:
+            print("  ❌ FAILED: Found duplicates within datasets!")
+        
+        # Test 2: Check for overlaps between datasets
+        train_set = set(self.train_ids)
+        val_set = set(self.val_ids)
+        test_set = set(self.test_ids)
+        
+        train_val_overlap = train_set.intersection(val_set)
+        train_test_overlap = train_set.intersection(test_set)
+        val_test_overlap = val_set.intersection(test_set)
+        
+        print(f"\nTest 2 - Overlaps between datasets:")
+        print(f"  Train-Val overlap: {len(train_val_overlap)} frames")
+        print(f"  Train-Test overlap: {len(train_test_overlap)} frames")
+        print(f"  Val-Test overlap: {len(val_test_overlap)} frames")
+        
+        if len(train_val_overlap) == 0 and len(train_test_overlap) == 0 and len(val_test_overlap) == 0:
+            print("  ✅ PASSED: No overlaps between datasets")
+        else:
+            print("  ❌ FAILED: Found overlaps between datasets!")
+            if train_val_overlap:
+                print(f"    Train-Val overlap IDs: {list(train_val_overlap)[:10]}...")
+            if train_test_overlap:
+                print(f"    Train-Test overlap IDs: {list(train_test_overlap)[:10]}...")
+            if val_test_overlap:
+                print(f"    Val-Test overlap IDs: {list(val_test_overlap)[:10]}...")
+        
+        # Test 3: Check total count
+        total_split = len(self.train_ids) + len(self.val_ids) + len(self.test_ids)
+        original_total = len(self.main_dataset.lines)
+        
+        print(f"\nTest 3 - Total frame count:")
+        print(f"  Original dataset: {original_total} frames")
+        print(f"  Split total: {total_split} frames")
+        print(f"  Difference: {abs(original_total - total_split)}")
+        
+        if total_split == original_total:
+            print("  ✅ PASSED: Total frame count matches")
+        else:
+            print("  ❌ FAILED: Total frame count mismatch!")
+        
+        # Test 4: Check ID ranges
+        all_ids = self.train_ids + self.val_ids + self.test_ids
+        min_id = min(all_ids) if all_ids else 0
+        max_id = max(all_ids) if all_ids else 0
+        
+        print(f"\nTest 4 - ID ranges:")
+        print(f"  Min ID: {min_id}")
+        print(f"  Max ID: {max_id}")
+        print(f"  Expected range: 0 to {original_total - 1}")
+        
+        if min_id >= 0 and max_id < original_total:
+            print("  ✅ PASSED: All IDs within valid range")
+        else:
+            print("  ❌ FAILED: Some IDs outside valid range!")
+        
+        print("--- END VALIDATION TESTS ---")
+    
+    def _get_current_dataset_pointer(self):
+        """Get the pointer for the current dataset"""
+        if self.current_dataset_type == 'train':
+            return self.train_pointer
+        elif self.current_dataset_type == 'validation':
+            return self.val_pointer
+        elif self.current_dataset_type == 'test':
+            return self.test_pointer
+        else:  # main
+            return self.main_pointer
+    
+    def _set_current_dataset_pointer(self, position):
+        """Set the pointer for the current dataset"""
+        if self.current_dataset_type == 'train':
+            self.train_pointer = max(0, min(position, len(self.train_ids) - 1))
+        elif self.current_dataset_type == 'validation':
+            self.val_pointer = max(0, min(position, len(self.val_ids) - 1))
+        elif self.current_dataset_type == 'test':
+            self.test_pointer = max(0, min(position, len(self.test_ids) - 1))
+        else:  # main
+            self.main_pointer = max(0, min(position, len(self.main_dataset.lines) - 1))
+    
+    def _get_current_global_frame_id(self):
+        """Get the global frame ID in the original dataset based on current dataset and pointer"""
+        if self.current_dataset_type == 'train':
+            if self.train_pointer < len(self.train_ids):
+                return self.train_ids[self.train_pointer]
+        elif self.current_dataset_type == 'validation':
+            if self.val_pointer < len(self.val_ids):
+                return self.val_ids[self.val_pointer]
+        elif self.current_dataset_type == 'test':
+            if self.test_pointer < len(self.test_ids):
+                return self.test_ids[self.test_pointer]
+        else:  # main
+            return self.main_pointer
+        return 0
+    
+    def _sync_data_manager_to_current_frame(self):
+        """Sync the data manager pointer to the current global frame ID"""
+        global_frame_id = self._get_current_global_frame_id()
+        self.data_manager._pointer = global_frame_id
+        # Invalidate dataframe cache to force re-reading
+        self.data_manager._read_pos = global_frame_id - 1
+        print(f"DEBUG: Synced data_manager pointer to global frame {global_frame_id}")
+    
+    def _get_current_dataset_ids(self):
+        """Get the current dataset's frame IDs"""
+        if self.current_dataset_type == 'train':
+            return self.train_ids
+        elif self.current_dataset_type == 'validation':
+            return self.val_ids
+        elif self.current_dataset_type == 'test':
+            return self.test_ids
+        else:
+            # Main dataset - return all frame indices
+            return list(range(len(self.main_dataset.lines)))
+    
+    def _navigate_to_frame_id(self, frame_id):
+        """Navigate the main dataset to a specific frame ID"""
+        if 0 <= frame_id < len(self.main_dataset.lines):
+            self.main_dataset._pointer = frame_id
+            self.data_manager._pointer = frame_id  # Keep data_manager in sync
+
     def on_dataset_selection_changed(self, *args):
-        """Handle dataset selection change"""
-        print(f"Dataset selection changed to: {self.selected_dataset.get()}")
-        # Update status to reflect current dataset selection
+        """Handle dataset selection change - switch to ID-based dataset with separate pointers"""
+        selected = self.selected_dataset.get()
+        old_dataset = self.current_dataset_type
+        print(f"\n=== DATASET SELECTION CHANGE ===")
+        print(f"Switching from: {old_dataset.upper()} → {selected.upper()}")
+        
+        # Save current position in old dataset's pointer
+        if old_dataset == 'main':
+            self.main_pointer = self.data_manager._pointer
+        elif old_dataset == 'train':
+            # Current position within train dataset
+            if self.data_manager._pointer in self.train_ids:
+                self.train_pointer = self.train_ids.index(self.data_manager._pointer)
+        elif old_dataset == 'validation':
+            if self.data_manager._pointer in self.val_ids:
+                self.val_pointer = self.val_ids.index(self.data_manager._pointer)
+        elif old_dataset == 'test':
+            if self.data_manager._pointer in self.test_ids:
+                self.test_pointer = self.test_ids.index(self.data_manager._pointer)
+        
+        print(f"Saved {old_dataset} pointer position")
+        
+        # Switch the current dataset type
+        if selected.upper() == 'ORIGINAL':
+            self.current_dataset_type = 'main'
+        else:
+            self.current_dataset_type = selected.lower()
+        
+        # Get info about the new dataset
+        dataset_ids = self._get_current_dataset_ids()
+        print(f"New dataset has {len(dataset_ids)} frames")
+        
+        # Restore position in new dataset using its saved pointer
+        current_pointer = self._get_current_dataset_pointer()
+        print(f"Restoring {self.current_dataset_type} dataset to pointer position: {current_pointer}")
+        
+        # Sync data manager to the correct global frame
+        self._sync_data_manager_to_current_frame()
+        
+        # Update display
+        self.distances = self.data_manager.dataframe
+        if len(self.distances) == LIDAR_RESOLUTION + 1:
+            self.render_frame()
+            self.update_inputs()
+        
+        print(f"=== DATASET SELECTION COMPLETE ===\n")
+        
+        # Navigate to the first frame of the selected dataset
+        frame_id = self._get_current_frame_id()
+        print(f"Navigating to first frame ID: {frame_id}")
+        self._navigate_to_frame_id(frame_id)
+        
+        # Update display
+        self.render_frame()
         self.update_status()
+        print(f"=== DATASET SELECTION COMPLETE ===\n")
+    
+    def _get_current_frame_id(self):
+        """Get the actual frame ID in the original dataset"""
+        dataset_ids = self._get_current_dataset_ids()
+        if self.current_dataset_position < len(dataset_ids):
+            return dataset_ids[self.current_dataset_position]
+        return 0
     
     def get_dataset_frames(self, dataset_type=None):
-        """Get all frame indices for a specific dataset type"""
-        if not self.data_splits:
-            return list(range(len(self.data_manager.data_list)))
-        
-        if dataset_type is None:
-            dataset_type = self.selected_dataset.get()
-        
-        # Convert dataset_type to lowercase for comparison since data_splits stores lowercase values
-        dataset_type_lower = dataset_type.lower()
-        
-        frames = [idx for idx, split_type in self.data_splits.items() if split_type == dataset_type_lower]
-        return sorted(frames)
+        """Get all frame indices for the current dataset"""
+        dataset_ids = self._get_current_dataset_ids()
+        return list(range(len(dataset_ids)))
     
     def navigate_dataset_frame(self, direction):
-        """Navigate within the selected dataset"""
-        if not self.data_splits:
-            # If no splits, use normal navigation
+        """Navigate within the selected dataset using separate pointers"""
+        print(f"\n=== DATASET NAVIGATION: {direction.upper()} ===")
+        print(f"Current dataset: {self.current_dataset_type}")
+        
+        if not self.data_splits and self.current_dataset_type != 'main':
+            # If no splits but not in main dataset, use normal navigation
             if direction == 'next':
                 self.next_frame()
             elif direction == 'prev':
@@ -3220,37 +3490,38 @@ or contact the development team.
                 self.last_frame()
             return
         
-        dataset_frames = self.get_dataset_frames()
-        if not dataset_frames:
-            print(f"No frames in {self.selected_dataset.get()} dataset")
+        # Get current dataset info
+        dataset_ids = self._get_current_dataset_ids()
+        if not dataset_ids:
+            print(f"No frames in {self.current_dataset_type} dataset")
             return
         
-        current_frame = self.data_manager._pointer
+        current_pointer = self._get_current_dataset_pointer()
+        print(f"Current pointer in {self.current_dataset_type}: {current_pointer}")
         
-        try:
-            current_idx = dataset_frames.index(current_frame)
-        except ValueError:
-            # Current frame not in selected dataset, go to first frame
-            current_idx = -1
-            direction = 'first'
-        
-        # Navigate within dataset
+        # Calculate new position
         if direction == 'next':
-            new_idx = min(current_idx + 1, len(dataset_frames) - 1)
+            new_pointer = min(current_pointer + 1, len(dataset_ids) - 1)
         elif direction == 'prev':
-            new_idx = max(current_idx - 1, 0)
+            new_pointer = max(current_pointer - 1, 0)
         elif direction == 'first':
-            new_idx = 0
+            new_pointer = 0
         elif direction == 'last':
-            new_idx = len(dataset_frames) - 1
+            new_pointer = len(dataset_ids) - 1
         else:
+            print(f"Unknown direction: {direction}")
             return
         
-        # Move to the new frame
-        target_frame = dataset_frames[new_idx]
+        print(f"Moving from pointer {current_pointer} to {new_pointer}")
+        
+        # Update the dataset pointer
+        self._set_current_dataset_pointer(new_pointer)
+        
+        # Update previous angular velocity
         self.update_previous_angular_velocity()
-        self.data_manager._pointer = target_frame
-        self.data_manager.dataframe = self.data_manager.data_list[target_frame]
+        
+        # Sync data manager to the correct global frame
+        self._sync_data_manager_to_current_frame()
         
         # Update display
         self.distances = self.data_manager.dataframe
@@ -3258,8 +3529,10 @@ or contact the development team.
             self.render_frame()
             self.update_inputs()
         
-        self.update_button_states()
-        print(f"Navigated to {self.selected_dataset.get()} frame {new_idx + 1}/{len(dataset_frames)} (global frame {target_frame + 1})")
+        # Enhanced debug output
+        global_frame_id = self._get_current_global_frame_id()
+        print(f"Final state - Dataset: {self.current_dataset_type}, Pointer: {new_pointer}, Global Frame: {global_frame_id + 1}")
+        print(f"=== NAVIGATION COMPLETE ===\n")
     
     def move_to_next_set(self):
         """Move to the next frame in the current dataset"""
@@ -3286,8 +3559,8 @@ or contact the development team.
             
             # Navigate to next frame
             self.data_manager._pointer = next_frame
-            self.data_manager.dataframe = self.data_manager.data_list[next_frame]
-            self.visualize()
+            self.data_manager.dataframe = self.data_manager.lines[next_frame]
+            self.render_frame()
             self.update_status()
             
             print(f"Moved to next {current_set} frame: {next_frame} ({next_pos + 1}/{len(same_set_frames)})")
@@ -3295,8 +3568,8 @@ or contact the development team.
         except ValueError:
             # Current frame not in the set, move to first frame of the set
             self.data_manager._pointer = same_set_frames[0]
-            self.data_manager.dataframe = self.data_manager.data_list[same_set_frames[0]]
-            self.visualize()
+            self.data_manager.dataframe = self.data_manager.lines[same_set_frames[0]]
+            self.render_frame()
             self.update_status()
             
             print(f"Moved to first {current_set} frame: {same_set_frames[0]} (1/{len(same_set_frames)})")
@@ -3756,17 +4029,68 @@ or contact the development team.
         self.linear_var.set('')
     
     def update_inputs(self):
-        """Update tkinter input fields with current data"""
+        """Update tkinter input fields with current data using separate dataset pointers"""
         if self.distances and len(self.distances) == LIDAR_RESOLUTION + 1:
-            # Update frame input field with current frame number (if not actively being edited)
-            if not self.frame_entry.focus_get() == self.frame_entry:  # Only update if not focused
-                current_frame = self.data_manager.pointer + 1  # Convert to 1-based indexing
-                self.frame_var.set(str(current_frame))
-            
-            # Update total frames info
-            total_frames = len(self.data_manager.lines)
-            self.total_frames_label.config(text=f"of {total_frames}")
-            
+            # Check if we're navigating a split dataset
+            if hasattr(self, 'data_splits') and self.data_splits and self.current_dataset_type != 'main':
+                # Get current dataset info using separate pointers
+                dataset_ids = self._get_current_dataset_ids()
+                current_pointer = self._get_current_dataset_pointer()
+                global_frame_id = self._get_current_global_frame_id()
+                
+                if dataset_ids and current_pointer < len(dataset_ids):
+                    # Show: actual frame ID from original dataset (global frame + 1)
+                    actual_frame_id = global_frame_id + 1
+                    # Position within current dataset
+                    dataset_position = current_pointer + 1
+                    total_dataset_frames = len(dataset_ids)
+                    
+                    # Update frame input field with current frame number (if not actively being edited)
+                    if not self.frame_entry.focus_get() == self.frame_entry:
+                        self.frame_var.set(str(actual_frame_id))
+                    
+                    # Update total frames info
+                    dataset_name = self.current_dataset_type.title()
+                    self.total_frames_label.config(text=f"of {total_dataset_frames} ({dataset_name})")
+                    
+                    # Update frame information display
+                    mode_text = "AUGMENTED" if self.augmented_mode else "REAL"
+                    self.frame_info_var.set(f"Frame: {actual_frame_id} ({dataset_position}/{total_dataset_frames} in {dataset_name}) [{mode_text}]")
+                else:
+                    # Fallback to default frame info if current frame not in dataset
+                    if not self.frame_entry.focus_get() == self.frame_entry:
+                        current_frame = self.data_manager.pointer + 1
+                        self.frame_var.set(str(current_frame))
+                    
+                    total_frames = len(self.data_manager.lines)
+                    self.total_frames_label.config(text=f"of {total_frames}")
+                    
+                    mode_text = "AUGMENTED" if self.augmented_mode else "REAL"
+                    current_frame = self.data_manager.pointer + 1
+                    self.frame_info_var.set(f"Frame: {current_frame}/{total_frames} [{mode_text}]")
+            else:
+                # Original dataset or no splits - use default frame info
+                # Update frame input field with current frame number (if not actively being edited)
+                if not self.frame_entry.focus_get() == self.frame_entry:  # Only update if not focused
+                    current_frame = self.data_manager.pointer + 1  # Convert to 1-based indexing
+                    self.frame_var.set(str(current_frame))
+                
+                # Update total frames info
+                total_frames = len(self.data_manager.lines)
+                self.total_frames_label.config(text=f"of {total_frames}")
+                
+                # Update frame information display
+                mode_text = "AUGMENTED" if self.augmented_mode else "REAL"
+                current_frame = self.data_manager.pointer + 1  # Add 1 for 1-based indexing (pointer is 0-based)
+                total_frames = len(self.data_manager.lines)
+                self.frame_info_var.set(f"Frame: {current_frame}/{total_frames} [{mode_text}]")
+                
+                # Update frame information display
+                mode_text = "AUGMENTED" if self.augmented_mode else "REAL"
+                current_frame = self.data_manager.pointer + 1  # Add 1 for 1-based indexing (pointer is 0-based)
+                total_frames = len(self.data_manager.lines)
+                self.frame_info_var.set(f"Frame: {current_frame}/{total_frames} [{mode_text}]")
+
             # Update angular velocity field with current value (if not actively being edited)
             if not self.turn_entry.focus_get() == self.turn_entry:  # Only update if not focused
                 try:
@@ -3775,12 +4099,6 @@ or contact the development team.
                     self.turn_var.set(f"{display_turn:.2f}")
                 except (ValueError, TypeError):
                     self.turn_var.set(str(self.distances[360]))
-            
-            # Update frame information display
-            mode_text = "AUGMENTED" if self.augmented_mode else "REAL"
-            current_frame = self.data_manager.pointer + 1  # Add 1 for 1-based indexing (pointer is 0-based)
-            total_frames = len(self.data_manager.lines)
-            self.frame_info_var.set(f"Frame: {current_frame}/{total_frames} [{mode_text}]")
             
             # Update modified frames information display
             total_modified = len(self.data_manager.modified_frames)
@@ -3942,6 +4260,9 @@ or contact the development team.
                     self.pred_turn_var.set("--")
             
             pygame.display.flip()
+            
+            # Process pygame events to ensure proper updating
+            pygame.event.pump()
         except Exception as e:
             print(f"Error rendering frame: {e}")
     

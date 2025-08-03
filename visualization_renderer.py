@@ -105,7 +105,10 @@ class VisualizationRenderer:
                 # Update prediction text even when visualization is disabled
                 self._update_prediction_text_only(distances, augmented_mode, data_manager, pred_turn_var)
             
+            # Standard pygame display update
             pygame.display.flip()
+            pygame.event.pump()
+                
         except Exception as e:
             print(f"Error rendering frame: {e}")
             import traceback

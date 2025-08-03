@@ -86,7 +86,7 @@ class UIManager:
         self.show_forward_dir = tk.BooleanVar(value=True)
         
         # Dataset navigation variables
-        self.selected_dataset = tk.StringVar(value="TRAIN")  # Default to train set
+        self.selected_dataset = tk.StringVar(value="Original")  # Default to original dataset
         
         # Data splitting variables
         self.data_splits = {}  # Will store frame_id -> split_type mapping
@@ -119,9 +119,11 @@ class UIManager:
         controls_container = ttk.Frame(parent)
         controls_container.pack(fill='x', pady=(0, 5))
         
-        # Left controls panel
+        # Left controls panel - increased width to accommodate all controls including mode button
         left_controls = ttk.LabelFrame(controls_container, text="Navigation & Controls", padding=5)
-        left_controls.pack(side='left', fill='both', expand=True, padx=(0, 5))
+        left_controls.pack(side='left', fill='y', padx=(0, 5))
+        left_controls.configure(width=450)  # Increased width to show all controls including mode button
+        left_controls.pack_propagate(False)  # Prevent shrinking
         
         # First row - main control buttons
         button_frame = ttk.Frame(left_controls)
@@ -169,9 +171,9 @@ class UIManager:
         self.last_modified_button = ttk.Button(self.modified_button_frame, text="Last Mod ⏭", 
                                              command=self.callbacks.get('last_modified_frame'), width=12)
         
-        # Right controls panel - Data Management & Flipping
+        # Right controls panel - Data Management & Flipping - now expands to fill remaining space
         right_controls = ttk.LabelFrame(controls_container, text="Data Management", padding=5)
-        right_controls.pack(side='right', fill='y')
+        right_controls.pack(side='right', fill='both', expand=True)
         
         # Flipping controls
         flip_frame = ttk.Frame(right_controls)
@@ -206,12 +208,14 @@ class UIManager:
         self.selected_dataset.trace('w', lambda *args: self.callbacks.get('on_dataset_selection_changed', lambda: None)())
         
         # Radio buttons for dataset selection
+        ttk.Radiobutton(self.dataset_radio_frame, text="Original", variable=self.selected_dataset, 
+                       value="Original", width=7).pack(side='left', padx=(0, 2))
         ttk.Radiobutton(self.dataset_radio_frame, text="Train", variable=self.selected_dataset, 
-                       value="TRAIN", width=8).pack(side='left', padx=(0, 2))
+                       value="Train", width=6).pack(side='left', padx=(0, 2))
         ttk.Radiobutton(self.dataset_radio_frame, text="Val", variable=self.selected_dataset, 
-                       value="VALIDATION", width=6).pack(side='left', padx=(0, 2))
+                       value="Validation", width=5).pack(side='left', padx=(0, 2))
         ttk.Radiobutton(self.dataset_radio_frame, text="Test", variable=self.selected_dataset, 
-                       value="TEST", width=6).pack(side='left')
+                       value="Test", width=5).pack(side='left')
     
     def setup_status_panel(self, parent):
         """Setup the status panel"""
