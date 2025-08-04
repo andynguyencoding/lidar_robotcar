@@ -16,43 +16,26 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 def main():
     """Main entry point for the visualizer application"""
     
-    parser = argparse.ArgumentParser(description='LiDAR Robot Car Data Visualizer (runs modular version by default)')
+    parser = argparse.ArgumentParser(description='LiDAR Robot Car Data Visualizer')
     parser.add_argument('--data-file', '-f', type=str, 
                        help='Path to the data file to visualize (default: data/run1/out1.txt)')
     parser.add_argument('--augmented', '-a', action='store_true',
                        help='Enable augmented data mode')
     parser.add_argument('--inspect', '-i', action='store_true',
                        help='Start in inspection mode')
-    parser.add_argument('--monolithic', '-m', action='store_true',
-                       help='Run the monolithic version instead of modular (default)')
     
     args = parser.parse_args()
     
     try:
-        if args.monolithic:
-            # Run the monolithic version
-            print("Starting monolithic visualizer...")
-            from visualizer.visualizer import run_monolithic_visualizer
-            
-            # Create config for monolithic version
-            config = {
-                'data_file': args.data_file or 'data/run1/out1.txt',
-                'augmented_mode': args.augmented,
-                'inspection_mode': args.inspect
-            }
-            
-            run_monolithic_visualizer(config)
-            
-        else:
-            # Run modular version (default)
-            print("Starting modular visualizer...")
-            from visualizer.main import run
-            
-            run(
-                data_file=args.data_file or 'data/run1/out1.txt',
-                show_augmented=args.augmented,
-                inspection_mode=args.inspect
-            )
+        # Run modular visualizer
+        print("Starting visualizer...")
+        from visualizer.main import run
+        
+        run(
+            data_file=args.data_file or 'data/run1/out1.txt',
+            show_augmented=args.augmented,
+            inspection_mode=args.inspect
+        )
             
     except ImportError as e:
         print(f"Import error: {e}")

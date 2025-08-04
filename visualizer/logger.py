@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Logging System for LiDAR Robotcar Visualizer
+Logging utilities for the LiDAR Robot Car project.
 
-This module provides a centralized logging system with configurable levels
-for both monolithic and modular components of the visualizer application.
+This module provides centralized logging functionality
+for the modular visualizer application.
 """
 
 import logging

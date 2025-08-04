@@ -2,7 +2,6 @@
 LiDAR Visualizer Package
 
 This package contains the complete LiDAR data visualization system including:
-- Monolithic visualizer (visualizer.py)
 - Modular visualizer components (visualizer_core.py, ui_components.py, etc.)
 - Data management and statistics
 - AI model integration
