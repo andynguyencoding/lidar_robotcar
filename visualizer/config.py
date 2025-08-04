@@ -41,6 +41,10 @@ AUGMENTATION_UNIT = "m"  # Default unit measurement: "m" or "mm"
 DIRECTION_RATIO_MAX_DEGREE = 45.0  # Maximum degrees for visualization
 DIRECTION_RATIO_MAX_ANGULAR = 1.0  # Angular velocity value that maps to max degree
 
+# Export Configuration
+EXPORT_FILE_PREFIX = "lidar_dataset"  # Default prefix for exported files
+EXPORT_TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"  # Default timestamp format for exported files
+
 
 def calculate_scale_factor(data_manager, sample_size=10):
     """

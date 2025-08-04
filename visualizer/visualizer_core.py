@@ -215,6 +215,7 @@ class VisualizerWindow:
             # Data splitting controls
             'split_data': self.split_data,
             'move_to_next_set': self.move_to_next_set,
+            'export_datasets': self.export_datasets,
             'on_dataset_selection_changed': self.on_dataset_selection_changed
         }
     
@@ -2222,12 +2223,12 @@ MOUSE CONTROLS:
         """Show preferences dialog"""
         import tkinter as tk
         from tkinter import ttk, messagebox
-        from .config import AUGMENTATION_UNIT
+        from .config import AUGMENTATION_UNIT, EXPORT_FILE_PREFIX, EXPORT_TIMESTAMP_FORMAT
         
         # Create popup window
         popup = tk.Toplevel(self.root)
         popup.title("Preferences")
-        popup.geometry("450x380")
+        popup.geometry("500x500")
         popup.resizable(False, False)
         
         # Center the popup
@@ -2236,9 +2237,9 @@ MOUSE CONTROLS:
         
         # Calculate center position
         popup.update_idletasks()
-        x = (popup.winfo_screenwidth() // 2) - (450 // 2)
-        y = (popup.winfo_screenheight() // 2) - (380 // 2)
-        popup.geometry(f"450x380+{x}+{y}")
+        x = (popup.winfo_screenwidth() // 2) - (500 // 2)
+        y = (popup.winfo_screenheight() // 2) - (500 // 2)
+        popup.geometry(f"500x500+{x}+{y}")
         
         main_frame = ttk.Frame(popup, padding=20)
         main_frame.pack(fill='both', expand=True)
@@ -2249,10 +2250,10 @@ MOUSE CONTROLS:
         title_label.pack(pady=(0, 15))
         
         # Unit measurement configuration
-        unit_frame = ttk.Frame(main_frame)
+        unit_frame = ttk.LabelFrame(main_frame, text="Data Unit Measurement", padding=10)
         unit_frame.pack(fill='x', pady=(0, 15))
         
-        ttk.Label(unit_frame, text="Data Unit Measurement:", 
+        ttk.Label(unit_frame, text="Unit:", 
                  font=('Arial', 10)).pack(anchor='w')
         unit_var = tk.StringVar(value=AUGMENTATION_UNIT)
         unit_combo = ttk.Combobox(unit_frame, textvariable=unit_var, 
@@ -2261,10 +2262,10 @@ MOUSE CONTROLS:
         unit_combo.focus_set()
         
         # Data split ratios configuration
-        split_frame = ttk.Frame(main_frame)
+        split_frame = ttk.LabelFrame(main_frame, text="Data Split Ratios", padding=10)
         split_frame.pack(fill='x', pady=(0, 15))
         
-        ttk.Label(split_frame, text="Data Split Ratios (Train:Validation:Test):", 
+        ttk.Label(split_frame, text="Split Ratios (Train:Validation:Test):", 
                  font=('Arial', 10)).pack(anchor='w')
         
         ratios_frame = ttk.Frame(split_frame)
@@ -2288,10 +2289,62 @@ MOUSE CONTROLS:
         
         ttk.Label(ratios_frame, text="%").pack(side='left', padx=(5, 0))
         
+        # Export configuration
+        export_frame = ttk.LabelFrame(main_frame, text="Export Settings", padding=10)
+        export_frame.pack(fill='x', pady=(0, 15))
+        
+        # File prefix setting
+        ttk.Label(export_frame, text="File Prefix:", 
+                 font=('Arial', 10)).pack(anchor='w')
+        prefix_var = tk.StringVar(value=EXPORT_FILE_PREFIX)
+        prefix_entry = ttk.Entry(export_frame, textvariable=prefix_var, width=30)
+        prefix_entry.pack(anchor='w', pady=(5, 10))
+        
+        # Timestamp format setting
+        ttk.Label(export_frame, text="Timestamp Format:", 
+                 font=('Arial', 10)).pack(anchor='w')
+        timestamp_var = tk.StringVar(value=EXPORT_TIMESTAMP_FORMAT)
+        
+        # Timestamp format options
+        timestamp_frame = ttk.Frame(export_frame)
+        timestamp_frame.pack(anchor='w', pady=(5, 5))
+        
+        timestamp_combo = ttk.Combobox(timestamp_frame, textvariable=timestamp_var, 
+                                      values=["%Y%m%d_%H%M%S", "%Y-%m-%d_%H-%M-%S", "%Y%m%d", "%H%M%S"], 
+                                      width=20, state="readonly")
+        timestamp_combo.pack(side='left')
+        
+        # Preview of export filenames
+        preview_frame = ttk.Frame(export_frame)
+        preview_frame.pack(fill='x', pady=(10, 0))
+        
+        ttk.Label(preview_frame, text="Preview:", 
+                 font=('Arial', 9, 'bold')).pack(anchor='w')
+        
+        preview_var = tk.StringVar()
+        preview_label = ttk.Label(preview_frame, textvariable=preview_var, 
+                                 font=('Arial', 8), foreground='blue', wraplength=400)
+        preview_label.pack(anchor='w', pady=(5, 0))
+        
+        def update_preview(*args):
+            """Update the preview of export filenames"""
+            try:
+                from datetime import datetime
+                timestamp = datetime.now().strftime(timestamp_var.get())
+                prefix = prefix_var.get()
+                preview_text = f"Example files:\n{prefix}_train_{timestamp}.csv\n{prefix}_validation_{timestamp}.csv\n{prefix}_test_{timestamp}.csv"
+                preview_var.set(preview_text)
+            except:
+                preview_var.set("Invalid timestamp format")
+        
+        # Bind to update preview
+        prefix_var.trace('w', update_preview)
+        timestamp_var.trace('w', update_preview)
+        
         # Current values info
         info_text = f"Current Unit: {AUGMENTATION_UNIT}\nCurrent Split: {':'.join(map(str, self.ui_manager.split_ratios))}%"
         info_label = ttk.Label(main_frame, text=info_text, 
-                              font=('Arial', 8), foreground='blue')
+                              font=('Arial', 8), foreground='gray')
         info_label.pack(pady=(0, 15))
         
         # Button frame
@@ -2302,6 +2355,21 @@ MOUSE CONTROLS:
             """Apply the new preferences"""
             try:
                 new_unit = unit_var.get()
+                new_prefix = prefix_var.get().strip()
+                new_timestamp = timestamp_var.get()
+                
+                # Validate inputs
+                if not new_prefix:
+                    messagebox.showerror("Error", "File prefix cannot be empty")
+                    return
+                
+                # Validate timestamp format
+                try:
+                    from datetime import datetime
+                    datetime.now().strftime(new_timestamp)
+                except:
+                    messagebox.showerror("Error", "Invalid timestamp format")
+                    return
                 
                 # Validate and update split ratios
                 train_ratio = int(train_var.get())
@@ -2319,12 +2387,20 @@ MOUSE CONTROLS:
                 # Update config module
                 import config
                 config.AUGMENTATION_UNIT = new_unit
+                config.EXPORT_FILE_PREFIX = new_prefix
+                config.EXPORT_TIMESTAMP_FORMAT = new_timestamp
+                
+                # Update local config as well
+                from . import config as local_config
+                local_config.AUGMENTATION_UNIT = new_unit
+                local_config.EXPORT_FILE_PREFIX = new_prefix
+                local_config.EXPORT_TIMESTAMP_FORMAT = new_timestamp
                 
                 # Update split ratios
                 self.ui_manager.split_ratios = [train_ratio, val_ratio, test_ratio]
                 
                 popup.destroy()
-                print(f"Preferences updated - Unit: {new_unit}, Split ratios: {train_ratio}:{val_ratio}:{test_ratio}")
+                print(f"Preferences updated - Unit: {new_unit}, Prefix: {new_prefix}, Timestamp: {new_timestamp}, Split ratios: {train_ratio}:{val_ratio}:{test_ratio}")
                 
             except ValueError:
                 messagebox.showerror("Error", "Split ratios must be valid integers")
@@ -2344,6 +2420,9 @@ MOUSE CONTROLS:
         # Bind Enter and Escape keys
         unit_combo.bind('<Return>', lambda e: apply_preferences())
         popup.bind('<Escape>', lambda e: cancel_dialog())
+        
+        # Initial preview update
+        update_preview()
     
     # Augmentation methods - Rotation only
     
@@ -3150,6 +3229,92 @@ MOUSE CONTROLS:
             print(f"Error moving frame to next set: {e}")
             import traceback
             traceback.print_exc()
+    
+    def export_datasets(self):
+        """Export the train, validation, and test datasets to CSV files"""
+        try:
+            from tkinter import messagebox, filedialog
+            from datetime import datetime
+            import os
+            from .config import EXPORT_FILE_PREFIX, EXPORT_TIMESTAMP_FORMAT
+            
+            # Check if data is loaded
+            if not hasattr(self, 'data_manager') or not self.data_manager:
+                messagebox.showerror("Error", "No data loaded to export")
+                return
+            
+            # Check if data has been split
+            if not hasattr(self, 'train_ids') or not hasattr(self, 'val_ids') or not hasattr(self, 'test_ids'):
+                messagebox.showwarning("Warning", "Data has not been split yet. Please split data first.")
+                return
+            
+            # Get current timestamp
+            timestamp = datetime.now().strftime(EXPORT_TIMESTAMP_FORMAT)
+            
+            # Ask user for export directory
+            export_dir = filedialog.askdirectory(
+                title="Select directory to export datasets",
+                initialdir=os.path.dirname(self.config.get('data_file', ''))
+            )
+            
+            if not export_dir:
+                return  # User cancelled
+            
+            # Generate filenames
+            train_filename = f"{EXPORT_FILE_PREFIX}_train_{timestamp}.csv"
+            val_filename = f"{EXPORT_FILE_PREFIX}_validation_{timestamp}.csv"
+            test_filename = f"{EXPORT_FILE_PREFIX}_test_{timestamp}.csv"
+            
+            train_path = os.path.join(export_dir, train_filename)
+            val_path = os.path.join(export_dir, val_filename)
+            test_path = os.path.join(export_dir, test_filename)
+            
+            # Export each dataset
+            exported_files = []
+            
+            # Export training set
+            if self._export_dataset_to_csv(self.train_ids, train_path, "Training"):
+                exported_files.append(f"• {train_filename} ({len(self.train_ids)} frames)")
+            
+            # Export validation set
+            if self._export_dataset_to_csv(self.val_ids, val_path, "Validation"):
+                exported_files.append(f"• {val_filename} ({len(self.val_ids)} frames)")
+            
+            # Export test set
+            if self._export_dataset_to_csv(self.test_ids, test_path, "Test"):
+                exported_files.append(f"• {test_filename} ({len(self.test_ids)} frames)")
+            
+            if exported_files:
+                success_message = f"Successfully exported datasets to:\n\n" + "\n".join(exported_files)
+                messagebox.showinfo("Export Complete", success_message)
+                print(f"Datasets exported to: {export_dir}")
+            else:
+                messagebox.showerror("Error", "Failed to export datasets")
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to export datasets: {str(e)}")
+            print(f"Error exporting datasets: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def _export_dataset_to_csv(self, frame_ids, output_path, dataset_name):
+        """Export a specific dataset (identified by frame IDs) to CSV file"""
+        try:
+            with open(output_path, 'w', newline='') as csvfile:
+                for frame_id in frame_ids:
+                    if frame_id < len(self.main_dataset.lines):
+                        # Get the original line data
+                        line = self.main_dataset.lines[frame_id].strip()
+                        csvfile.write(line + '\n')
+                    else:
+                        print(f"Warning: Frame ID {frame_id} is out of range for {dataset_name} dataset")
+            
+            print(f"{dataset_name} dataset exported: {output_path} ({len(frame_ids)} frames)")
+            return True
+            
+        except Exception as e:
+            print(f"Error exporting {dataset_name} dataset to {output_path}: {e}")
+            return False
     
     def _apply_rotation_transformation(self, angle_degrees):
         """Apply rotation transformation by shifting array indices"""
