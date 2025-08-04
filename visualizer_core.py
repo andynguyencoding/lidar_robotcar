@@ -18,6 +18,7 @@ from undo_system import UndoSystem
 from data_statistics import DataAnalyzer
 from visualization_renderer import VisualizationRenderer
 from pginput import DataManager
+from logger import get_logger, debug, info, warning, error, log_ui_event, log_navigation, log_dataset_operation, log_function
 from ai_model import is_ai_model_loaded, load_ai_model, get_ai_prediction, get_ai_model_info
 from tkinter import messagebox, filedialog
 
@@ -198,7 +199,9 @@ class VisualizerWindow:
             'zoom_in': self.zoom_in,
             'zoom_out': self.zoom_out,
             
-            # Preferences
+            # Settings
+            'show_logging_config': self.show_logging_config,
+            'show_log_viewer': self.show_log_viewer,
             'show_preferences_dialog': self.show_preferences_dialog,
             
             # Application control
@@ -3518,6 +3521,26 @@ MOUSE CONTROLS:
             print(f"Error in animation loop: {e}")
             # Continue animation even if there's an error
             self.root.after(100, self.animate)
+    
+    def show_logging_config(self):
+        """Show logging configuration dialog"""
+        try:
+            from ui_components import LoggingConfigDialog
+            log_ui_event("Logging config dialog opened")
+            dialog = LoggingConfigDialog(self.root)
+        except Exception as e:
+            error(f"Error opening logging config dialog: {e}", "UI")
+            messagebox.showerror("Error", f"Could not open logging configuration: {str(e)}")
+    
+    def show_log_viewer(self):
+        """Show log viewer dialog"""
+        try:
+            from ui_components import LogViewerDialog
+            log_ui_event("Log viewer dialog opened")
+            dialog = LogViewerDialog(self.root)
+        except Exception as e:
+            error(f"Error opening log viewer dialog: {e}", "UI")
+            messagebox.showerror("Error", f"Could not open log viewer: {str(e)}")
     
     def on_closing(self):
         """Handle window close event"""

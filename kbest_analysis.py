@@ -12,6 +12,7 @@ from sklearn.preprocessing import LabelEncoder
 import tkinter as tk
 from tkinter import ttk, messagebox
 import traceback
+from logger import info, debug, error, warning, log_function
 
 def analyze_kbest_features(data_manager, k=30, score_func='f_classif'):
     """
@@ -25,6 +26,7 @@ def analyze_kbest_features(data_manager, k=30, score_func='f_classif'):
     Returns:
         dict: Analysis results containing best positions, scores, and statistics
     """
+    info(f"Starting K-Best analysis with k={k}, score_func={score_func}", "KBest")
     try:
         # Collect all data points
         print(f"Starting K-Best analysis with k={k}, score_func={score_func}")

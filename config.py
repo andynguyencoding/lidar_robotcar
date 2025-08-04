@@ -2,6 +2,11 @@
 Configuration constants and settings for the LiDAR Visualizer
 """
 
+# Logging Configuration
+LOG_LEVEL = "INFO"  # Available levels: DEBUG, INFO, WARNING, ERROR, CRITICAL
+LOG_TO_FILE = True  # Whether to log to file in addition to console
+LOG_TO_CONSOLE = True  # Whether to log to console
+
 # LiDAR constants
 LIDAR_RESOLUTION = 360
 

@@ -1,6 +1,7 @@
 import numpy as np
 import pygame as pg
 import csv
+from logger import get_logger, debug, info, warning, error, log_data_operation, log_navigation
 
 COLOR_INACTIVE = pg.Color('red')
 COLOR_ACTIVE = pg.Color('green')
@@ -88,13 +89,20 @@ class InputBox(Observable):
 class DataManager(Observer):
     def __init__(self, in_file, out_file, w_mode=True):
         super().__init__()
+        info(f"Initializing DataManager with input file: {in_file}", "DataManager")
+        
         self.in_file = in_file  # Store the input file path for saving
         self.infile = open(in_file, 'r')
         self.lines = self.infile.readlines()
         
+        info(f"Loaded {len(self.lines)} lines from data file", "DataManager")
+        
         # Detect and skip header if present
         self._header_detected = self._detect_header()
         self._data_start_line = 1 if self._header_detected else 0
+        
+        if self._header_detected:
+            info("Header detected in data file, skipping first line", "DataManager")
         
         self._pointer = self._data_start_line  # Start from first data line
         self._read_pos = -1
@@ -201,34 +209,42 @@ class DataManager(Observer):
         return self._pointer < len(self.lines)
 
     def next(self):
+        old_pointer = self._pointer
         self._pointer += 1
         # Reset read position to force re-reading of the dataframe
         self._read_pos = self._pointer - 1
+        debug(f"Navigation: next from frame {old_pointer} to {self._pointer}", "DataManager")
         return self._lidar_dataframe
 
     def has_prev(self):
         return self._pointer > self._data_start_line
 
     def prev(self):
+        old_pointer = self._pointer
         if self._pointer > self._data_start_line:
             self._pointer -= 1
             # Reset read position to force re-reading of the dataframe
             self._read_pos = self._pointer - 1
+            debug(f"Navigation: prev from frame {old_pointer} to {self._pointer}", "DataManager")
         return self._lidar_dataframe
 
     def first(self):
         """Jump to the first frame"""
+        old_pointer = self._pointer
         self._pointer = self._data_start_line
         # Reset read position to force re-reading of the dataframe
         self._read_pos = -1
+        debug(f"Navigation: first from frame {old_pointer} to {self._pointer}", "DataManager")
         return self._lidar_dataframe
 
     def last(self):
         """Jump to the last frame"""
+        old_pointer = self._pointer
         if len(self.lines) > 0:
             self._pointer = len(self.lines) - 1
             # Reset read position to force re-reading of the dataframe
             self._read_pos = self._pointer - 1
+            debug(f"Navigation: last from frame {old_pointer} to {self._pointer}", "DataManager")
         return self._lidar_dataframe
 
     # Modified frames navigation methods

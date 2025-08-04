@@ -3,8 +3,10 @@ UI components and menu management for the LiDAR Visualizer
 """
 
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, scrolledtext, messagebox
 from config import DEFAULT_CANVAS_SIZE
+from logger import debug, info, log_ui_event, get_logger, set_log_level, get_log_level
+import os
 
 
 class UIManager:
@@ -431,8 +433,6 @@ class UIManager:
         file_menu.add_separator()
         file_menu.add_command(label="Save Data", command=self.callbacks.get('save_data'), accelerator="Ctrl+S")
         file_menu.add_separator()
-        file_menu.add_command(label="Preferences...", command=self.callbacks.get('show_preferences_dialog'))
-        file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.callbacks.get('quit_app'), accelerator="Ctrl+Q")
         
         # Data menu
@@ -460,6 +460,21 @@ class UIManager:
         ai_menu.add_cascade(label="K-Best", menu=kbest_menu)
         kbest_menu.add_command(label="Load K-Best...", command=self.callbacks.get('show_kbest_analysis'))
         kbest_menu.add_command(label="View Current Positions...", command=self.callbacks.get('show_current_kbest_positions'))
+        
+        # Settings menu
+        settings_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Settings", menu=settings_menu)
+        
+        # Add Preferences to Settings menu
+        settings_menu.add_command(label="Preferences...", command=self.callbacks.get('show_preferences_dialog'))
+        settings_menu.add_separator()
+        
+        # Logging submenu
+        logging_menu = tk.Menu(settings_menu, tearoff=0)
+        settings_menu.add_cascade(label="Logging", menu=logging_menu)
+        logging_menu.add_command(label="Set Level...", command=self.callbacks.get('show_logging_config'))
+        logging_menu.add_separator()
+        logging_menu.add_command(label="View Logs...", command=self.callbacks.get('show_log_viewer'))
         
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
@@ -513,3 +528,516 @@ class UIManager:
                     )
             else:
                 self.recent_menu.add_command(label="(No recent files)", state='disabled')
+
+
+class LoggingConfigDialog:
+    """Dialog for configuring logging settings"""
+    
+    def __init__(self, parent):
+        self.parent = parent
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title("Logging Configuration")
+        self.dialog.geometry("400x300")
+        self.dialog.resizable(False, False)
+        
+        # Center the dialog
+        self.dialog.update_idletasks()
+        x = (self.dialog.winfo_screenwidth() // 2) - (400 // 2)
+        y = (self.dialog.winfo_screenheight() // 2) - (300 // 2)
+        self.dialog.geometry(f"400x300+{x}+{y}")
+        
+        # Make dialog modal
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+        
+        self.setup_ui()
+        
+    def setup_ui(self):
+        """Setup the dialog UI"""
+        main_frame = ttk.Frame(self.dialog)
+        main_frame.pack(fill='both', expand=True, padx=20, pady=20)
+        
+        # Title
+        title_label = ttk.Label(main_frame, text="Logging Configuration", 
+                               font=('Arial', 14, 'bold'))
+        title_label.pack(pady=(0, 20))
+        
+        # Current level display
+        current_frame = ttk.LabelFrame(main_frame, text="Current Settings", padding=10)
+        current_frame.pack(fill='x', pady=(0, 20))
+        
+        current_level = get_log_level()
+        ttk.Label(current_frame, text=f"Current Level: {current_level}").pack()
+        
+        # Level selection
+        level_frame = ttk.LabelFrame(main_frame, text="Set Logging Level", padding=10)
+        level_frame.pack(fill='x', pady=(0, 20))
+        
+        self.level_var = tk.StringVar(value=current_level)
+        levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+        level_descriptions = {
+            'DEBUG': 'All messages (most verbose)',
+            'INFO': 'General information',
+            'WARNING': 'Warning messages only',
+            'ERROR': 'Error messages only',
+            'CRITICAL': 'Critical errors only'
+        }
+        
+        for level in levels:
+            frame = ttk.Frame(level_frame)
+            frame.pack(fill='x', pady=2)
+            
+            radio = ttk.Radiobutton(frame, text=level, variable=self.level_var, value=level)
+            radio.pack(side='left')
+            
+            desc_label = ttk.Label(frame, text=f"- {level_descriptions[level]}", 
+                                  foreground='gray')
+            desc_label.pack(side='left', padx=(10, 0))
+        
+        # Buttons
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill='x')
+        
+        ttk.Button(button_frame, text="Apply", command=self.apply_changes).pack(side='left', padx=(0, 10))
+        ttk.Button(button_frame, text="Cancel", command=self.cancel).pack(side='right')
+    
+    def apply_changes(self):
+        """Apply the logging level changes"""
+        new_level = self.level_var.get()
+        set_log_level(new_level)
+        info(f"Logging level changed to {new_level}", "Settings")
+        messagebox.showinfo("Success", f"Logging level set to {new_level}")
+        self.dialog.destroy()
+    
+    def cancel(self):
+        """Cancel and close dialog"""
+        self.dialog.destroy()
+
+
+class LogViewerDialog:
+    """Dialog for viewing log files"""
+    
+    def __init__(self, parent):
+        self.parent = parent
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title("Log Viewer")
+        self.dialog.geometry("800x600")
+        self.dialog.resizable(True, True)
+        
+        # Center the dialog
+        self.dialog.update_idletasks()
+        x = (self.dialog.winfo_screenwidth() // 2) - (800 // 2)
+        y = (self.dialog.winfo_screenheight() // 2) - (600 // 2)
+        self.dialog.geometry(f"800x600+{x}+{y}")
+        
+        # Make dialog modal
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+        
+        self.setup_ui()
+        self.load_logs()
+        
+    def setup_ui(self):
+        """Setup the dialog UI"""
+        main_frame = ttk.Frame(self.dialog)
+        main_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        # Title and controls
+        title_frame = ttk.Frame(main_frame)
+        title_frame.pack(fill='x', pady=(0, 10))
+        
+        ttk.Label(title_frame, text="Application Logs", 
+                 font=('Arial', 14, 'bold')).pack(side='left')
+        
+        ttk.Button(title_frame, text="Refresh", command=self.load_logs).pack(side='right', padx=(10, 0))
+        ttk.Button(title_frame, text="Clear", command=self.clear_logs).pack(side='right')
+        
+        # Log display
+        self.log_text = scrolledtext.ScrolledText(main_frame, wrap=tk.WORD, 
+                                                 font=('Courier', 9))
+        self.log_text.pack(fill='both', expand=True, pady=(0, 10))
+        
+        # Close button
+        ttk.Button(main_frame, text="Close", command=self.dialog.destroy).pack()
+    
+    def load_logs(self):
+        """Load and display log contents"""
+        try:
+            log_file = os.path.join(os.path.dirname(__file__), 'logs', 'visualizer.log')
+            if os.path.exists(log_file):
+                with open(log_file, 'r') as f:
+                    content = f.read()
+                
+                self.log_text.delete(1.0, tk.END)
+                self.log_text.insert(tk.END, content)
+                self.log_text.see(tk.END)  # Scroll to bottom
+            else:
+                self.log_text.delete(1.0, tk.END)
+                self.log_text.insert(tk.END, "No log file found. Logs will appear here once the application generates them.")
+        except Exception as e:
+            self.log_text.delete(1.0, tk.END)
+            self.log_text.insert(tk.END, f"Error loading logs: {str(e)}")
+    
+    def clear_logs(self):
+        """Clear the log display"""
+        if messagebox.askyesno("Clear Logs", "Clear the log display? This won't delete the log file."):
+            self.log_text.delete(1.0, tk.END)
+
+
+class LoggingConfigDialog:
+    """Dialog for configuring logging settings"""
+    
+    def __init__(self, parent):
+        self.parent = parent
+        
+        # Create dialog window
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title("Logging Configuration")
+        self.dialog.geometry("500x400")
+        self.dialog.resizable(False, False)
+        
+        # Center the dialog
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+        
+        # Calculate center position
+        self.dialog.update_idletasks()
+        x = (self.dialog.winfo_screenwidth() // 2) - (250)
+        y = (self.dialog.winfo_screenheight() // 2) - (200)
+        self.dialog.geometry(f"500x400+{x}+{y}")
+        
+        self.setup_ui()
+        self.update_current_settings()
+    
+    def setup_ui(self):
+        """Setup the dialog UI"""
+        main_frame = ttk.Frame(self.dialog)
+        main_frame.pack(fill='both', expand=True, padx=15, pady=15)
+        
+        # Title
+        title_label = ttk.Label(main_frame, text="Logging Configuration", 
+                               font=('Arial', 14, 'bold'))
+        title_label.pack(pady=(0, 15))
+        
+        # Current settings frame
+        current_frame = ttk.LabelFrame(main_frame, text="Current Settings", padding=10)
+        current_frame.pack(fill='x', pady=(0, 15))
+        
+        self.current_info = ttk.Label(current_frame, text="Loading...", 
+                                     font=('Arial', 9))
+        self.current_info.pack(anchor='w')
+        
+        # Level configuration frame
+        level_frame = ttk.LabelFrame(main_frame, text="Logging Level", padding=10)
+        level_frame.pack(fill='x', pady=(0, 15))
+        
+        # Description
+        desc_text = """Select the logging level to control verbosity:
+• DEBUG: Most detailed (function tracing, variable values)
+• INFO: General information (user actions, data operations)  
+• WARNING: Warnings about potential issues
+• ERROR: Error messages for serious problems
+• CRITICAL: Critical errors that may cause crashes"""
+        
+        desc_label = ttk.Label(level_frame, text=desc_text, 
+                              font=('Arial', 9), justify='left')
+        desc_label.pack(anchor='w', pady=(0, 10))
+        
+        # Level selection
+        self.level_var = tk.StringVar()
+        levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+        
+        for level in levels:
+            ttk.Radiobutton(level_frame, text=level, variable=self.level_var, 
+                           value=level).pack(anchor='w', padx=20)
+        
+        # File information frame
+        file_frame = ttk.LabelFrame(main_frame, text="Log Files", padding=10)
+        file_frame.pack(fill='both', expand=True, pady=(0, 15))
+        
+        # File info display
+        self.file_info = tk.Text(file_frame, height=6, wrap=tk.WORD, 
+                                font=('Courier', 9), state='disabled')
+        scrollbar_file = ttk.Scrollbar(file_frame, orient='vertical', 
+                                      command=self.file_info.yview)
+        self.file_info.configure(yscrollcommand=scrollbar_file.set)
+        
+        self.file_info.pack(side='left', fill='both', expand=True)
+        scrollbar_file.pack(side='right', fill='y')
+        
+        # Button frame
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill='x')
+        
+        ttk.Button(button_frame, text="Apply", 
+                  command=self.apply_settings).pack(side='left', padx=(0, 10))
+        ttk.Button(button_frame, text="Refresh", 
+                  command=self.update_current_settings).pack(side='left', padx=(0, 10))
+        ttk.Button(button_frame, text="Close", 
+                  command=self.dialog.destroy).pack(side='right')
+    
+    def update_current_settings(self):
+        """Update display with current logging settings"""
+        try:
+            from logger import get_logging_info
+            
+            info = get_logging_info()
+            
+            # Update current settings display
+            settings_text = f"""Level: {info['level']}
+Console Logging: {'Enabled' if info['console_enabled'] else 'Disabled'}
+File Logging: {'Enabled' if info['file_enabled'] else 'Disabled'}
+Active Handlers: {info['handlers_count']}"""
+            
+            self.current_info.config(text=settings_text)
+            
+            # Set current level in radio buttons
+            self.level_var.set(info['level'])
+            
+            # Update file information
+            self.file_info.config(state='normal')
+            self.file_info.delete(1.0, tk.END)
+            
+            if info['file_enabled']:
+                file_text = f"""Current Log File: {info['log_file_path']}
+Log Directory: {info['log_directory']}
+
+File Naming Pattern:
+• Current session: visualizer_YYYYMMDD_NNN.log  
+• Archived logs: visualizer_YYYYMMDD_NNN_archived.log
+• Where NNN is a running number (001, 002, etc.)
+
+Log Rotation:
+• Daily rotation at midnight
+• Keeps 30 days of archived logs
+• Automatic cleanup of old logs"""
+            else:
+                file_text = "File logging is not available.\nCheck directory permissions and disk space."
+            
+            self.file_info.insert('1.0', file_text)
+            self.file_info.config(state='disabled')
+            
+        except Exception as e:
+            self.current_info.config(text=f"Error loading settings: {str(e)}")
+    
+    def apply_settings(self):
+        """Apply the selected logging settings"""
+        try:
+            from logger import set_log_level
+            
+            new_level = self.level_var.get()
+            if new_level:
+                set_log_level(new_level)
+                messagebox.showinfo("Settings Applied", 
+                                   f"Logging level changed to {new_level}")
+                self.update_current_settings()
+            else:
+                messagebox.showwarning("No Selection", "Please select a logging level")
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to apply settings: {str(e)}")
+
+
+class LogViewerDialog:
+    """Dialog for viewing log files"""
+    
+    def __init__(self, parent):
+        self.parent = parent
+        
+        # Create dialog window  
+        self.dialog = tk.Toplevel(parent)
+        self.dialog.title("Log Viewer")
+        self.dialog.geometry("800x600")
+        self.dialog.resizable(True, True)
+        
+        # Center the dialog
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+        
+        # Calculate center position
+        self.dialog.update_idletasks()
+        x = (self.dialog.winfo_screenwidth() // 2) - (400)
+        y = (self.dialog.winfo_screenheight() // 2) - (300)
+        self.dialog.geometry(f"800x600+{x}+{y}")
+        
+        self.setup_ui()
+        self.load_current_log()
+    
+    def setup_ui(self):
+        """Setup the log viewer UI"""
+        main_frame = ttk.Frame(self.dialog)
+        main_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        # Title and controls frame
+        header_frame = ttk.Frame(main_frame)
+        header_frame.pack(fill='x', pady=(0, 10))
+        
+        ttk.Label(header_frame, text="Log Viewer", 
+                 font=('Arial', 14, 'bold')).pack(side='left')
+        
+        # Control buttons
+        controls_frame = ttk.Frame(header_frame)
+        controls_frame.pack(side='right')
+        
+        ttk.Button(controls_frame, text="Refresh", 
+                  command=self.load_current_log).pack(side='left', padx=(0, 5))
+        ttk.Button(controls_frame, text="Clear Display", 
+                  command=self.clear_display).pack(side='left', padx=(0, 5))
+        ttk.Button(controls_frame, text="Save As...", 
+                  command=self.save_logs).pack(side='left')
+        
+        # Log file selection frame
+        file_frame = ttk.LabelFrame(main_frame, text="Log File Selection", padding=5)
+        file_frame.pack(fill='x', pady=(0, 10))
+        
+        self.file_var = tk.StringVar()
+        self.file_combo = ttk.Combobox(file_frame, textvariable=self.file_var, 
+                                      state='readonly')
+        self.file_combo.pack(side='left', fill='x', expand=True, padx=(0, 10))
+        self.file_combo.bind('<<ComboboxSelected>>', self.on_file_selected)
+        
+        ttk.Button(file_frame, text="Load", 
+                  command=self.load_selected_log).pack(side='right')
+        
+        # Log display
+        log_frame = ttk.LabelFrame(main_frame, text="Log Contents", padding=5)
+        log_frame.pack(fill='both', expand=True, pady=(0, 10))
+        
+        self.log_text = scrolledtext.ScrolledText(log_frame, wrap=tk.WORD, 
+                                                 font=('Courier', 9))
+        self.log_text.pack(fill='both', expand=True)
+        
+        # Status frame
+        status_frame = ttk.Frame(main_frame)
+        status_frame.pack(fill='x')
+        
+        self.status_label = ttk.Label(status_frame, text="Ready")
+        self.status_label.pack(side='left')
+        
+        ttk.Button(status_frame, text="Close", 
+                  command=self.dialog.destroy).pack(side='right')
+        
+        # Populate file list
+        self.refresh_file_list()
+    
+    def refresh_file_list(self):
+        """Refresh the list of available log files"""
+        try:
+            from logger import get_logging_info
+            
+            info = get_logging_info()
+            log_files = []
+            
+            if info['log_directory'] and os.path.exists(info['log_directory']):
+                # Get all log files in the directory
+                for filename in os.listdir(info['log_directory']):
+                    if filename.endswith('.log'):
+                        log_files.append(filename)
+                
+                # Sort by modification time (newest first)
+                log_files.sort(key=lambda f: os.path.getmtime(
+                    os.path.join(info['log_directory'], f)), reverse=True)
+            
+            self.file_combo['values'] = log_files
+            
+            if log_files:
+                self.file_combo.set(log_files[0])  # Select most recent
+                
+        except Exception as e:
+            self.status_label.config(text=f"Error listing files: {str(e)}")
+    
+    def on_file_selected(self, event=None):
+        """Handle file selection change"""
+        self.load_selected_log()
+    
+    def load_selected_log(self):
+        """Load the selected log file"""
+        try:
+            selected_file = self.file_var.get()
+            if not selected_file:
+                return
+                
+            from logger import get_logging_info
+            info = get_logging_info()
+            
+            if info['log_directory']:
+                log_path = os.path.join(info['log_directory'], selected_file)
+                self.load_log_file(log_path)
+            
+        except Exception as e:
+            self.status_label.config(text=f"Error loading file: {str(e)}")
+    
+    def load_current_log(self):
+        """Load the current active log file"""
+        try:
+            from logger import get_log_file_path
+            
+            log_file = get_log_file_path()
+            if log_file and os.path.exists(log_file):
+                self.load_log_file(log_file)
+                # Update combo box selection
+                filename = os.path.basename(log_file)
+                if filename in self.file_combo['values']:
+                    self.file_combo.set(filename)
+            else:
+                self.log_text.delete(1.0, tk.END)
+                self.log_text.insert(tk.END, "No active log file found.")
+                self.status_label.config(text="No log file available")
+                
+        except Exception as e:
+            self.status_label.config(text=f"Error loading log: {str(e)}")
+    
+    def load_log_file(self, log_path):
+        """Load a specific log file"""
+        try:
+            if os.path.exists(log_path):
+                with open(log_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                
+                self.log_text.delete(1.0, tk.END)
+                self.log_text.insert(tk.END, content)
+                self.log_text.see(tk.END)  # Scroll to bottom
+                
+                # Update status
+                file_size = os.path.getsize(log_path)
+                line_count = content.count('\n')
+                self.status_label.config(text=f"Loaded: {os.path.basename(log_path)} ({file_size} bytes, {line_count} lines)")
+                
+            else:
+                self.log_text.delete(1.0, tk.END)
+                self.log_text.insert(tk.END, f"Log file not found: {log_path}")
+                self.status_label.config(text="File not found")
+                
+        except Exception as e:
+            self.log_text.delete(1.0, tk.END)
+            self.log_text.insert(tk.END, f"Error reading log file: {str(e)}")
+            self.status_label.config(text=f"Error: {str(e)}")
+    
+    def clear_display(self):
+        """Clear the log display"""
+        if messagebox.askyesno("Clear Display", "Clear the log display?"):
+            self.log_text.delete(1.0, tk.END)
+            self.status_label.config(text="Display cleared")
+    
+    def save_logs(self):
+        """Save current log display to a file"""
+        try:
+            from tkinter import filedialog
+            
+            filename = filedialog.asksaveasfilename(
+                title="Save Log As",
+                defaultextension=".log",
+                filetypes=[("Log files", "*.log"), ("Text files", "*.txt"), ("All files", "*.*")]
+            )
+            
+            if filename:
+                content = self.log_text.get(1.0, tk.END)
+                with open(filename, 'w', encoding='utf-8') as f:
+                    f.write(content)
+                
+                self.status_label.config(text=f"Saved to: {os.path.basename(filename)}")
+                messagebox.showinfo("Saved", f"Log saved to:\n{filename}")
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save log: {str(e)}")
+            self.status_label.config(text=f"Save failed: {str(e)}")

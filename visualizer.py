@@ -13,6 +13,12 @@ import threading
 import traceback
 import sys
 from pginput import InputBox, DataManager
+from logger import get_logger, log_function, info, debug, error, warning
+import config
+
+# Initialize logger with config
+logger = get_logger()
+logger.set_level(config.LOG_LEVEL)
 
 # constant based on lidar resolution
 LIDAR_RESOLUTION = 360
@@ -25,6 +31,8 @@ TARGET_RADIUS = 300  # Use ~300 pixels of the 400 pixel radius available
 # Selected positions in a frame (result of the Sklearn SelectKBest function)
 DECISIVE_FRAME_POSITIONS = [24, 29, 31, 35, 38, 39, 40, 41, 42, 43, 44, 45, 47, 50, 54, 55, 57, 302,
                             304, 312, 314, 315, 316, 318, 319, 321, 324, 326, 328, 330]
+
+info("LiDAR Visualizer starting up", "Main")
 
 
 class VisualizerWindow:
@@ -521,8 +529,6 @@ class VisualizerWindow:
         file_menu.add_separator()
         file_menu.add_command(label="Save Data", command=self.save_data, accelerator="Ctrl+S")
         file_menu.add_separator()
-        file_menu.add_command(label="Preferences...", command=self.show_preferences_dialog)
-        file_menu.add_separator()
         file_menu.add_command(label="Exit", command=self.quit_visualizer, accelerator="Ctrl+Q")
         
         # Data menu
@@ -550,6 +556,11 @@ class VisualizerWindow:
         ai_menu.add_cascade(label="K-Best", menu=kbest_menu)
         kbest_menu.add_command(label="Load K-Best...", command=self.show_kbest_analysis)
         kbest_menu.add_command(label="View Current Positions...", command=self.show_current_kbest_positions)
+        
+        # Settings menu
+        settings_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Settings", menu=settings_menu)
+        settings_menu.add_command(label="Preferences...", command=self.show_preferences_dialog)
         
         # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
@@ -1523,6 +1534,7 @@ class VisualizerWindow:
     
     def load_data_file(self, filename):
         """Load a data file and update the application state"""
+        info(f"Loading data file: {filename}", "DataLoader")
         try:
             # Update status to show loading
             old_status = self.status_var.get()
@@ -1530,11 +1542,13 @@ class VisualizerWindow:
             self.root.update()
             
             # Create new data manager with the selected file
+            debug(f"Creating DataManager for file: {filename}", "DataLoader")
             self.data_manager = DataManager(filename, 'data/run2/_out.txt', False)
             calculate_scale_factor(self.data_manager)
             
             # Update config
             self.config['data_file'] = filename
+            info(f"Data file loaded successfully: {os.path.basename(filename)}", "DataLoader")
             
             # Update window title
             self.root.title(f"Lidar Visualizer - {os.path.basename(filename)}")
@@ -5006,6 +5020,8 @@ def console_config(preset_data_file=None):
 if __name__ == '__main__':
     import sys
     
+    info("LiDAR Visualizer application started", "Main")
+    
     # Check if running with command line arguments
     preset_data_file = None
     if len(sys.argv) > 1:
@@ -5059,3 +5075,5 @@ if __name__ == '__main__':
             print(f"Using default configuration with data file: {default_data_file}")
             visualizer = VisualizerWindow(config)
             visualizer.run()
+    
+    info("LiDAR Visualizer application ended", "Main")
