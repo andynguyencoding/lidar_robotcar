@@ -1763,7 +1763,7 @@ Max: {np.max(stats['angular_velocities']):.3f}"""
     
     def clear_ai_model(self):
         """Clear loaded AI model"""
-        from ai_model import ai_model_manager
+        from visualizer.ai_model import ai_model_manager
         ai_model_manager.clear_model()
         messagebox.showinfo("Success", "AI model cleared")
     

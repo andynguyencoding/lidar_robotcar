@@ -2,7 +2,7 @@
 Undo system for the LiDAR Visualizer
 """
 
-from config import MAX_UNDO_STEPS
+from .config import MAX_UNDO_STEPS
 
 
 class UndoSystem:

@@ -4,8 +4,8 @@ UI components and menu management for the LiDAR Visualizer
 
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox
-from config import DEFAULT_CANVAS_SIZE
-from logger import debug, info, log_ui_event, get_logger, set_log_level, get_log_level
+from .config import DEFAULT_CANVAS_SIZE
+from .logger import debug, info, log_ui_event, get_logger, set_log_level, get_log_level
 import os
 
 
@@ -779,7 +779,7 @@ class LoggingConfigDialog:
     def update_current_settings(self):
         """Update display with current logging settings"""
         try:
-            from logger import get_logging_info
+            from .logger import get_logging_info
             
             info = get_logging_info()
             
@@ -823,7 +823,7 @@ Log Rotation:
     def apply_settings(self):
         """Apply the selected logging settings"""
         try:
-            from logger import set_log_level
+            from .logger import set_log_level
             
             new_level = self.level_var.get()
             if new_level:
@@ -923,7 +923,7 @@ class LogViewerDialog:
     def refresh_file_list(self):
         """Refresh the list of available log files"""
         try:
-            from logger import get_logging_info
+            from .logger import get_logging_info
             
             info = get_logging_info()
             log_files = []
@@ -957,7 +957,7 @@ class LogViewerDialog:
             if not selected_file:
                 return
                 
-            from logger import get_logging_info
+            from .logger import get_logging_info
             info = get_logging_info()
             
             if info['log_directory']:
@@ -970,7 +970,7 @@ class LogViewerDialog:
     def load_current_log(self):
         """Load the current active log file"""
         try:
-            from logger import get_log_file_path
+            from .logger import get_log_file_path
             
             log_file = get_log_file_path()
             if log_file and os.path.exists(log_file):

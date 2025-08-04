@@ -11,7 +11,7 @@ try:
     print("Testing modular dialog implementations...")
     
     # Test imports
-    from config import SCALE_FACTOR, LIDAR_RESOLUTION
+    from visualizer.config import SCALE_FACTOR, LIDAR_RESOLUTION
     from main import calculate_scale_factor
     from pginput import DataManager
     

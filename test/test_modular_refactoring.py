@@ -43,7 +43,7 @@ def test_config_constants():
     print("\nTesting configuration constants...")
     
     try:
-        from config import LIDAR_RESOLUTION, DECISIVE_FRAME_POSITIONS, MAX_RECENT_FILES
+        from visualizer.config import LIDAR_RESOLUTION, DECISIVE_FRAME_POSITIONS, MAX_RECENT_FILES
         
         assert LIDAR_RESOLUTION == 360, f"Expected LIDAR_RESOLUTION=360, got {LIDAR_RESOLUTION}"
         assert len(DECISIVE_FRAME_POSITIONS) > 0, "DECISIVE_FRAME_POSITIONS should not be empty"

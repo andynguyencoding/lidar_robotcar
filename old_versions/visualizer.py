@@ -8,7 +8,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
 import os
 import shutil
-from ai_model import ai_model_manager, load_ai_model, get_ai_prediction, is_ai_model_loaded, get_ai_model_info
+from visualizer.ai_model import ai_model_manager, load_ai_model, get_ai_prediction, is_ai_model_loaded, get_ai_model_info
 import threading
 import traceback
 import sys

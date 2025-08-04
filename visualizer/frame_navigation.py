@@ -2,7 +2,7 @@
 Frame navigation and control logic for the LiDAR Visualizer
 """
 
-from config import LIDAR_RESOLUTION
+from .config import LIDAR_RESOLUTION
 
 
 class FrameNavigator:

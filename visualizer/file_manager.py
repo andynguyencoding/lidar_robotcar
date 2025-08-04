@@ -4,7 +4,7 @@ File management operations for the LiDAR Visualizer
 
 import os
 from tkinter import filedialog, messagebox
-from config import MAX_RECENT_FILES, RECENT_FILES_FILENAME
+from .config import MAX_RECENT_FILES, RECENT_FILES_FILENAME
 
 
 class FileManager:

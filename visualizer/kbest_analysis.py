@@ -12,7 +12,7 @@ from sklearn.preprocessing import LabelEncoder
 import tkinter as tk
 from tkinter import ttk, messagebox
 import traceback
-from logger import info, debug, error, warning, log_function
+from .logger import info, debug, error, warning, log_function
 
 def analyze_kbest_features(data_manager, k=30, score_func='f_classif'):
     """
@@ -164,7 +164,7 @@ def update_decisive_frame_positions(best_positions):
             pass
             
         try:
-            import ai_model
+            from . import ai_model
             # The ai_model module has hardcoded values, but they get overridden by config
         except:
             pass

@@ -6,8 +6,8 @@ import os
 import sys
 import shutil
 import math
-from config import LIDAR_RESOLUTION
-from pginput import DataManager
+from .config import LIDAR_RESOLUTION
+from .pginput import DataManager
 
 
 def concatenate_augmented_data(input_file):
@@ -93,7 +93,7 @@ def calculate_scale_factor(data_manager, sample_size=10):
     Analyze sample data to determine optimal scale factor
     """
     import math
-    from config import LIDAR_RESOLUTION, TARGET_RADIUS
+    from .config import LIDAR_RESOLUTION, TARGET_RADIUS
     
     # Sample the first few frames to understand data range
     valid_distances = []
@@ -137,7 +137,7 @@ def calculate_scale_factor(data_manager, sample_size=10):
         calculated_scale = TARGET_RADIUS / percentile_90
         
         # Update config module scale factor
-        import config
+        from . import config
         config.SCALE_FACTOR = calculated_scale
         
         print(f"Data analysis complete:")
@@ -165,7 +165,7 @@ def run(data_file=None, highlight_frames=True, show_augmented=False, inspection_
         }
         
         # Import here to avoid circular imports
-        from visualizer_core import VisualizerWindow
+        from .visualizer_core import VisualizerWindow
         
         # Create and run the visualizer
         visualizer = VisualizerWindow(config)

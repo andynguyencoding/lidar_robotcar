@@ -1,7 +1,7 @@
 import numpy as np
 import pygame as pg
 import csv
-from logger import get_logger, debug, info, warning, error, log_data_operation, log_navigation
+from .logger import get_logger, debug, info, warning, error, log_data_operation, log_navigation
 
 COLOR_INACTIVE = pg.Color('red')
 COLOR_ACTIVE = pg.Color('green')
@@ -138,7 +138,7 @@ class DataManager(Observer):
             data = first_line.split(',')
             
             # Import LIDAR_RESOLUTION from config
-            from config import LIDAR_RESOLUTION
+            from .config import LIDAR_RESOLUTION
             
             # For our lidar data format, we expect exactly 361 columns (360 lidar + 1 angular velocity)
             if len(data) != LIDAR_RESOLUTION + 1:

@@ -15,7 +15,7 @@ def test_data_loading():
     
     try:
         # Test imports
-        from config import SCALE_FACTOR, LIDAR_RESOLUTION
+        from visualizer.config import SCALE_FACTOR, LIDAR_RESOLUTION
         from pginput import DataManager
         from main import calculate_scale_factor
         

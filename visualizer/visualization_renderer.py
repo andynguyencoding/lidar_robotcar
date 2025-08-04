@@ -5,8 +5,8 @@ Pygame visualization and rendering for the LiDAR Visualizer
 import pygame
 import math
 import os
-from config import LIDAR_RESOLUTION, DECISIVE_FRAME_POSITIONS
-from ai_model import is_ai_model_loaded, get_ai_prediction
+from .config import LIDAR_RESOLUTION, DECISIVE_FRAME_POSITIONS
+from .ai_model import is_ai_model_loaded, get_ai_prediction
 
 
 class VisualizationRenderer:
@@ -73,8 +73,8 @@ class VisualizationRenderer:
             center_y = self.current_canvas_size / 2
             
             # Dynamic scale factor based on canvas size - import dynamically to get updated value
-            import config
-            dynamic_scale = config.SCALE_FACTOR * (self.current_canvas_size / 800)  # 800 is the original SCREEN_WIDTH
+            from .config import SCALE_FACTOR
+            dynamic_scale = SCALE_FACTOR * (self.current_canvas_size / 800)  # 800 is the original SCREEN_WIDTH
             
             # Render lidar points
             self._render_lidar_points(distances, center_x, center_y, dynamic_scale, augmented_mode)

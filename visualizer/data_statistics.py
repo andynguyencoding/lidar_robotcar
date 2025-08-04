@@ -9,7 +9,7 @@ from tkinter import ttk, messagebox
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
-from config import LIDAR_RESOLUTION
+from .config import LIDAR_RESOLUTION
 
 
 class DataAnalyzer:
