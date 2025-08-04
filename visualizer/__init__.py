@@ -14,7 +14,7 @@ from .main import run
 from .visualizer_core import VisualizerWindow
 
 # Core components
-from .pginput import DataManager, InputBox
+from .data_input import DataManager, InputBox
 from .ui_components import UIManager
 from .frame_navigation import FrameNavigator
 from .file_manager import FileManager

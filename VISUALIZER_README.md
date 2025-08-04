@@ -14,7 +14,7 @@ lidar_robotcar/
 │   ├── ui_components.py         # UI components and menus
 │   ├── visualization_renderer.py # Pygame rendering
 │   ├── frame_navigation.py      # Frame navigation logic
-│   ├── pginput.py               # Data management and pygame input
+│   ├── data_input.py            # Data management and user input
 │   ├── file_manager.py          # File operations
 │   ├── undo_system.py           # Undo/redo functionality
 │   ├── data_statistics.py       # Data analysis tools

@@ -10,23 +10,24 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from tkinter import ttk, messagebox
-from .config import DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT, LIDAR_RESOLUTION
-from .ui_components import UIManager
-from .frame_navigation import FrameNavigator
-from .file_manager import FileManager
-from .undo_system import UndoSystem
-from .data_statistics import DataAnalyzer
-from .visualization_renderer import VisualizationRenderer
-from .data_input import DataManager
-from .logger import get_logger, debug, info, warning, error, log_ui_event, log_navigation, log_dataset_operation, log_function
-from .ai_model import is_ai_model_loaded, load_ai_model, get_ai_prediction, get_ai_model_info
+from config import DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT, LIDAR_RESOLUTION
+from ui_components import UIManager
+from frame_navigation import FrameNavigator
+from file_manager import FileManager
+from undo_system import UndoSystem
+from data_statistics import DataAnalyzer
+from visualization_renderer import VisualizationRenderer
+from visualizer.data_input import DataManager
+from logger import get_logger, debug, info, warning, error, log_ui_event, log_navigation, log_dataset_operation, log_function
+from ai_model import is_ai_model_loaded, load_ai_model, get_ai_prediction, get_ai_model_info
 from tkinter import messagebox, filedialog
 
 
 def calculate_scale_factor(data_manager, sample_size=10):
-    """Calculate appropriate scale factor - imported from config utilities"""
-    from .config import calculate_scale_factor as calc_scale
-    return calc_scale(data_manager, sample_size)
+    """Calculate appropriate scale factor - imported from main utilities"""
+    from visualizer.config import calculate_scale_factor as calc_scale
+    calc_scale(data_manager, sample_size)
+
 
 class VisualizerWindow:
     """Main visualizer window and application controller"""
@@ -988,7 +989,7 @@ class VisualizerWindow:
     def zoom_in(self):
         """Increase the pygame scale factor by 10%"""
         try:
-            from . import config
+            import config
             new_scale = config.SCALE_FACTOR * 1.1
             config.SCALE_FACTOR = new_scale
             
@@ -1005,7 +1006,7 @@ class VisualizerWindow:
     def zoom_out(self):
         """Decrease the pygame scale factor by 10%"""
         try:
-            from . import config
+            import config
             new_scale = config.SCALE_FACTOR * 0.9
             
             # Prevent scale factor from becoming too small
@@ -1762,7 +1763,7 @@ Max: {np.max(stats['angular_velocities']):.3f}"""
     
     def clear_ai_model(self):
         """Clear loaded AI model"""
-        from .ai_model import ai_model_manager
+        from visualizer.ai_model import ai_model_manager
         ai_model_manager.clear_model()
         messagebox.showinfo("Success", "AI model cleared")
     
@@ -1904,7 +1905,7 @@ MOUSE CONTROLS:
     def show_kbest_analysis(self):
         """Show the K-Best feature analysis dialog"""
         try:
-            from .kbest_analysis import show_kbest_analysis_dialog
+            from kbest_analysis import show_kbest_analysis_dialog
             
             def refresh_visualization():
                 """Callback to refresh visualization after applying K-Best results"""
@@ -1927,7 +1928,7 @@ MOUSE CONTROLS:
     def show_current_kbest_positions(self):
         """Show the current K-Best data point positions"""
         try:
-            from .config import DECISIVE_FRAME_POSITIONS
+            from config import DECISIVE_FRAME_POSITIONS
             
             # Create a new dialog window
             dialog = tk.Toplevel(self.root)
@@ -2010,7 +2011,7 @@ MOUSE CONTROLS:
         """Show scale factor configuration dialog"""
         import tkinter as tk
         from tkinter import ttk, messagebox
-        from .config import SCALE_FACTOR
+        from config import SCALE_FACTOR
         
         # Create popup window
         popup = tk.Toplevel(self.root)
@@ -2222,7 +2223,7 @@ MOUSE CONTROLS:
         """Show preferences dialog"""
         import tkinter as tk
         from tkinter import ttk, messagebox
-        from .config import AUGMENTATION_UNIT
+        from config import AUGMENTATION_UNIT
         
         # Create popup window
         popup = tk.Toplevel(self.root)
@@ -3524,7 +3525,7 @@ MOUSE CONTROLS:
     def show_logging_config(self):
         """Show logging configuration dialog"""
         try:
-            from .ui_components import LoggingConfigDialog
+            from ui_components import LoggingConfigDialog
             log_ui_event("Logging config dialog opened")
             dialog = LoggingConfigDialog(self.root)
         except Exception as e:
@@ -3534,7 +3535,7 @@ MOUSE CONTROLS:
     def show_log_viewer(self):
         """Show log viewer dialog"""
         try:
-            from .ui_components import LogViewerDialog
+            from ui_components import LogViewerDialog
             log_ui_event("Log viewer dialog opened")
             dialog = LogViewerDialog(self.root)
         except Exception as e:

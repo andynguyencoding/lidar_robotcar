@@ -152,7 +152,7 @@ def test_main_functions():
     print("\nTesting main module functions...")
     
     try:
-        from main import calculate_scale_factor
+        from visualizer.config import calculate_scale_factor
         
         # Test function exists and can be called (we'd need real data for full test)
         print("✓ Main module functions accessible")

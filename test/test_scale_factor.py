@@ -12,8 +12,8 @@ try:
     
     # Test imports
     from visualizer.config import SCALE_FACTOR, LIDAR_RESOLUTION, TARGET_RADIUS
-    from main import calculate_scale_factor
-    from pginput import DataManager
+    from visualizer.config import calculate_scale_factor
+    from visualizer.data_input import DataManager
     
     print(f"✓ Imports successful")
     print(f"  Initial SCALE_FACTOR: {SCALE_FACTOR}")
@@ -43,7 +43,7 @@ try:
         result_scale = calculate_scale_factor(data_manager, sample_size=15)
         
         # Check if config was updated
-        import config
+        from visualizer import config
         print(f"  ✓ Scale factor calculated: {result_scale:.4f}")
         print(f"  ✓ Config updated: {config.SCALE_FACTOR:.4f}")
         
