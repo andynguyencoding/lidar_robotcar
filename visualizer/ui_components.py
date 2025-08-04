@@ -40,6 +40,8 @@ class UIManager:
         # UI components
         self.total_frames_label = None
         self.frame_entry = None
+        self.frame_pos_entry = None  # New frame position entry
+        self.dataset_info_label = None  # New dataset info label
         self.turn_entry = None
         self.prev_turn_entry = None
         self.pred_turn_entry = None
@@ -72,6 +74,7 @@ class UIManager:
         """Setup the main UI components"""
         # Initialize tkinter variables
         self.frame_var = tk.StringVar()
+        self.frame_pos_var = tk.StringVar()  # New variable for frame position
         self.turn_var = tk.StringVar()
         self.prev_turn_var = tk.StringVar()
         self.pred_turn_var = tk.StringVar()
@@ -108,6 +111,7 @@ class UIManager:
         
         # Initialize display values
         self.frame_var.set("1")
+        self.frame_pos_var.set("1")  # Initialize frame position
         self.prev_turn_var.set("0.00")
         self.pred_turn_var.set("--")
         self.frame_info_var.set("Frame: -- [--]")
@@ -149,16 +153,28 @@ class UIManager:
                                      command=self.callbacks.get('toggle_inspect'), width=12)
         self.mode_button.pack(side='left', padx=(0, 5))
         
-        # Frame input row
+        # Frame input rows
         frame_input_frame = ttk.Frame(left_controls)
         frame_input_frame.pack(fill='x', pady=(5, 0))
         
-        ttk.Label(frame_input_frame, text="Frame:", width=6).pack(side='left', padx=(0, 5))
+        # Frame ID (global frame number)
+        ttk.Label(frame_input_frame, text="Frame ID:", width=8).pack(side='left', padx=(0, 5))
         self.frame_entry = ttk.Entry(frame_input_frame, textvariable=self.frame_var, width=10)
         self.frame_entry.pack(side='left', padx=(0, 10))
         
         self.total_frames_label = ttk.Label(frame_input_frame, text="", font=('Arial', 9), foreground='gray')
         self.total_frames_label.pack(side='left', padx=(5, 0))
+        
+        # Frame Pos row (local position within current dataset)
+        frame_pos_frame = ttk.Frame(left_controls)
+        frame_pos_frame.pack(fill='x', pady=(2, 0))
+        
+        ttk.Label(frame_pos_frame, text="Frame Pos:", width=8).pack(side='left', padx=(0, 5))
+        self.frame_pos_entry = ttk.Entry(frame_pos_frame, textvariable=self.frame_pos_var, width=10, state='readonly')
+        self.frame_pos_entry.pack(side='left', padx=(0, 10))
+        
+        self.dataset_info_label = ttk.Label(frame_pos_frame, text="", font=('Arial', 9), foreground='blue')
+        self.dataset_info_label.pack(side='left', padx=(5, 0))
         
         # Modified frames navigation
         self.modified_button_frame = ttk.Frame(left_controls)

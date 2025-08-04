@@ -3548,8 +3548,12 @@ MOUSE CONTROLS:
                     if not frame_field_focused:
                         self.ui_manager.frame_var.set(str(actual_frame_id))
                     
+                    # Update frame position (local position within dataset)
+                    self.ui_manager.frame_pos_var.set(str(dataset_position))
+                    
                     dataset_name = self.current_dataset_type.title()
                     self.ui_manager.total_frames_label.config(text=f"of {total_dataset_frames} ({dataset_name})")
+                    self.ui_manager.dataset_info_label.config(text=f"of {total_dataset_frames} ({dataset_name})")
                     
                     # Update frame information display
                     mode_text = "AUGMENTED" if self.augmented_mode else "REAL"
@@ -3559,7 +3563,9 @@ MOUSE CONTROLS:
                     frame_info = self.frame_navigator.get_current_frame_info()
                     if not frame_field_focused:
                         self.ui_manager.frame_var.set(str(frame_info['current_frame']))
+                    self.ui_manager.frame_pos_var.set(str(frame_info['current_frame']))
                     self.ui_manager.total_frames_label.config(text=f"of {frame_info['total_frames']}")
+                    self.ui_manager.dataset_info_label.config(text="Main Dataset")
                     mode_text = "AUGMENTED" if self.augmented_mode else "REAL"
                     self.ui_manager.frame_info_var.set(f"Frame: {frame_info['current_frame']}/{frame_info['total_frames']} [{mode_text}]")
             else:
@@ -3567,6 +3573,24 @@ MOUSE CONTROLS:
                 frame_info = self.frame_navigator.get_current_frame_info()
                 
                 # Only update frame input field if not currently focused
+                try:
+                    current_focus = self.ui_manager.frame_entry.focus_get()
+                    frame_field_focused = (current_focus == self.ui_manager.frame_entry)
+                except:
+                    frame_field_focused = False
+                    
+                if not frame_field_focused:
+                    self.ui_manager.frame_var.set(str(frame_info['current_frame']))
+                
+                # Frame position is same as frame ID when in main dataset
+                self.ui_manager.frame_pos_var.set(str(frame_info['current_frame']))
+                
+                self.ui_manager.total_frames_label.config(text=f"of {frame_info['total_frames']}")
+                self.ui_manager.dataset_info_label.config(text="Main Dataset")
+                
+                # Update frame information display
+                mode_text = "AUGMENTED" if self.augmented_mode else "REAL"
+                self.ui_manager.frame_info_var.set(f"Frame: {frame_info['current_frame']}/{frame_info['total_frames']} [{mode_text}]")
                 try:
                     current_focus = self.ui_manager.frame_entry.focus_get()
                     frame_field_focused = (current_focus == self.ui_manager.frame_entry)
