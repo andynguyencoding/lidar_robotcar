@@ -219,7 +219,10 @@ class UIManager:
                   command=self.callbacks.get('move_to_next_set'), width=12).pack(side='left', padx=(0, 5))
                   
         ttk.Button(split_frame, text="📤 Export", 
-                  command=self.callbacks.get('export_datasets'), width=12).pack(side='left')
+                  command=self.callbacks.get('export_datasets'), width=12).pack(side='left', padx=(0, 5))
+                  
+        ttk.Button(split_frame, text="🤖 Train Model", 
+                  command=self.callbacks.get('train_regression_model'), width=12).pack(side='left')
         
         # Dataset selection radio buttons (visible below Split Data and Move Set buttons)
         self.dataset_radio_frame = ttk.LabelFrame(right_controls, text="Navigate Dataset", padding=3)

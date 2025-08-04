@@ -1,6 +1,6 @@
 """
 AI Model Integration Module for LiDAR Visualizer
-Handles loading and prediction with machine learning models
+Handles loading, training, and prediction with machine learning models
 """
 
 import os
@@ -8,6 +8,258 @@ import pickle
 import numpy as np
 from tkinter import messagebox
 import traceback
+
+
+class RegressionModelTrainer:
+    """Handles training of regression models from dataset splits"""
+    
+    def __init__(self):
+        self.progress_callback = None
+        
+    def set_progress_callback(self, callback):
+        """Set callback function for progress updates"""
+        self.progress_callback = callback
+        
+    def log_progress(self, message):
+        """Log progress message"""
+        if self.progress_callback:
+            self.progress_callback(message)
+        else:
+            print(message)
+    
+    def check_dependencies(self):
+        """Check if required dependencies are available"""
+        try:
+            import pandas as pd
+            import numpy as np
+            from sklearn.feature_selection import SelectKBest, f_regression
+            from sklearn.ensemble import RandomForestRegressor
+            from sklearn.metrics import mean_squared_error, r2_score
+            import pickle
+            return True, None
+        except ImportError as e:
+            missing_package = str(e).split("'")[1] if "'" in str(e) else "required package"
+            error_msg = (f"Missing required package: {missing_package}\n\n"
+                        f"Please install the required packages:\n"
+                        f"pip install pandas scikit-learn numpy")
+            return False, error_msg
+    
+    def train_regression_model(self, train_data, val_data, models_dir="models"):
+        """
+        Train a Random Forest regression model using the exact logic from notebooks/randomforest_regression.ipynb
+        
+        Args:
+            train_data: List of training data lines (list of strings)
+            val_data: List of validation data lines (list of strings) 
+            models_dir: Directory to save the trained model
+            
+        Returns:
+            dict: Training results with model path, metrics, etc.
+        """
+        try:
+            # Check dependencies
+            deps_ok, error_msg = self.check_dependencies()
+            if not deps_ok:
+                return {"success": False, "error": error_msg}
+            
+            # Import required packages
+            import pandas as pd
+            import numpy as np
+            from sklearn.feature_selection import SelectKBest, f_regression
+            from sklearn.ensemble import RandomForestRegressor
+            from sklearn.metrics import mean_squared_error, r2_score
+            import pickle
+            from datetime import datetime
+            
+            self.log_progress("🚀 Starting model training process...")
+            self.log_progress(f"📊 Dataset sizes: Train={len(train_data)}, Val={len(val_data)}")
+            
+            # Step 1: Prepare training data
+            self.log_progress("📋 Step 1/6: Preparing training data...")
+            train_df = self._prepare_dataframe(train_data, "training")
+            if train_df is None or train_df.empty:
+                return {"success": False, "error": "No valid training data found"}
+            
+            # Step 2: Prepare validation data  
+            self.log_progress("📋 Step 2/6: Preparing validation data...")
+            val_df = self._prepare_dataframe(val_data, "validation")
+            if val_df is None or val_df.empty:
+                return {"success": False, "error": "No valid validation data found"}
+                
+            self.log_progress(f"✅ Data prepared: {len(train_df)} training, {len(val_df)} validation samples")
+            
+            # Step 3: Data preprocessing (cleanup zero distances)
+            self.log_progress("🔧 Step 3/6: Data preprocessing - cleaning zero distances...")
+            self._cleanup_zero_distances(train_df)
+            self._cleanup_zero_distances(val_df)
+            self.log_progress("✅ Zero distance cleanup completed")
+            
+            # Step 4: Data augmentation
+            self.log_progress("🔄 Step 4/6: Creating augmented data...")
+            train_augmented = self._get_augmented_data(train_df)
+            val_augmented = self._get_augmented_data(val_df)
+            
+            # Combine original and augmented data
+            combined_train = pd.concat([train_df, train_augmented], ignore_index=True)
+            combined_val = pd.concat([val_df, val_augmented], ignore_index=True)
+            
+            # Rename last column to 'Turn'
+            combined_train.rename(columns={combined_train.columns[-1]: 'Turn'}, inplace=True)
+            combined_val.rename(columns={combined_val.columns[-1]: 'Turn'}, inplace=True)
+            
+            self.log_progress(f"✅ Data augmentation completed: {len(combined_train)} training samples, {len(combined_val)} validation samples")
+            
+            # Prepare features and target
+            X_train = combined_train.iloc[:, :-1]  # All columns except last
+            y_train = combined_train.iloc[:, -1]   # Last column (Turn)
+            X_val = combined_val.iloc[:, :-1]
+            y_val = combined_val.iloc[:, -1]
+            
+            self.log_progress(f"📊 Feature matrix shapes: X_train={X_train.shape}, X_val={X_val.shape}")
+            self.log_progress(f"📊 Target vector shapes: y_train={len(y_train)}, y_val={len(y_val)}")
+            
+            # Step 5: Feature selection and model training
+            self.log_progress("🎯 Step 5/6: Feature selection and model training...")
+            
+            # Feature selection with K-best (k=30 as in notebook)
+            k = 30
+            k_best = SelectKBest(score_func=f_regression, k=k)
+            k_best.fit(X_train, y_train)
+            
+            selected_feature_indices = k_best.get_support(indices=True)
+            self.log_progress(f"✅ Selected {k} best features: {selected_feature_indices[:10]}..." + 
+                           f" (showing first 10)")
+            
+            # Create and train Random Forest Regressor
+            rf = RandomForestRegressor(n_estimators=200, random_state=42)
+            rf.fit(X_train.iloc[:, selected_feature_indices], y_train)
+            self.log_progress("✅ Random Forest model training completed")
+            
+            # Step 6: Model evaluation
+            self.log_progress("📈 Step 6/6: Model evaluation...")
+            
+            # Make predictions on validation data
+            y_val_pred = rf.predict(X_val.iloc[:, selected_feature_indices])
+            
+            # Calculate metrics
+            mse = mean_squared_error(y_val, y_val_pred)
+            r2 = r2_score(y_val, y_val_pred)
+            
+            self.log_progress(f"📊 Model Performance Metrics:")
+            self.log_progress(f"   • Mean Squared Error: {mse:.6f}")
+            self.log_progress(f"   • R-squared Score: {r2:.6f}")
+            
+            # Save the model
+            if not os.path.exists(models_dir):
+                os.makedirs(models_dir)
+            
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            model_filename = f'lidar_regression_model_{timestamp}.pkl'
+            model_path = os.path.join(models_dir, model_filename)
+            
+            # Save both the model and feature indices
+            model_data = {
+                'model': rf,
+                'feature_indices': selected_feature_indices,
+                'k_best_selector': k_best,
+                'training_metrics': {
+                    'mse': mse,
+                    'r2_score': r2,
+                    'n_estimators': 200,
+                    'k_features': k
+                }
+            }
+            
+            with open(model_path, 'wb') as file:
+                pickle.dump(model_data, file)
+            
+            self.log_progress(f"💾 Model saved successfully:")
+            self.log_progress(f"   📁 Path: {model_path}")
+            self.log_progress(f"   📊 Features: {k} selected from 360 LiDAR points")
+            self.log_progress(f"   🌳 Trees: 200 Random Forest estimators")
+            self.log_progress("")
+            self.log_progress("🎉 Model training completed successfully!")
+            self.log_progress("   You can now use this model for angular velocity prediction.")
+            
+            return {
+                "success": True,
+                "model_path": model_path,
+                "metrics": {
+                    "mse": mse,
+                    "r2_score": r2
+                },
+                "model_data": model_data
+            }
+            
+        except Exception as e:
+            error_msg = f"Error during training: {str(e)}"
+            self.log_progress(f"❌ {error_msg}")
+            import traceback
+            error_details = traceback.format_exc()
+            self.log_progress(f"📋 Error details:\n{error_details}")
+            return {"success": False, "error": error_msg, "details": error_details}
+    
+    def _prepare_dataframe(self, data_lines, dataset_name):
+        """Convert data lines to pandas DataFrame"""
+        try:
+            import pandas as pd
+            
+            processed_data = []
+            for line in data_lines:
+                if isinstance(line, str):
+                    line = line.strip()
+                    data_parts = line.split(',')
+                else:
+                    data_parts = line
+                
+                if len(data_parts) >= 361:  # 360 lidar + 1 angular
+                    processed_data.append([float(x) for x in data_parts[:361]])
+            
+            if not processed_data:
+                self.log_progress(f"❌ No valid data found in {dataset_name} set")
+                return None
+                
+            return pd.DataFrame(processed_data)
+            
+        except Exception as e:
+            self.log_progress(f"❌ Error preparing {dataset_name} dataframe: {str(e)}")
+            return None
+    
+    def _cleanup_zero_distances(self, data):
+        """Clean up zero distances using interpolation (from notebook)"""
+        for i in range(data.shape[0]):
+            for j in range(data.shape[1] - 1):  # skip the last column (Turn value)
+                if data.iloc[i, j] == 0:
+                    # get right side value
+                    k = j
+                    left_val = right_val = 0
+                    while k < data.shape[1] - 1:
+                        if data.iloc[i, k] > 0:
+                            right_val = data.iloc[i, k]
+                            break
+                        k = k + 1
+                    # get the left side value
+                    left_val = right_val
+                    k = j
+                    while k >= 0:
+                        if data.iloc[i, k] > 0:
+                            left_val = data.iloc[i, k]
+                            break
+                        k = k - 1
+                    data.iat[i, j] = (left_val + right_val) / 2
+    
+    def _get_augmented_data(self, data):
+        """Create augmented data by flipping LiDAR readings (from notebook)"""
+        import pandas as pd
+        
+        augmented_data = np.zeros(data.shape)
+        for i in range(augmented_data.shape[0]):
+            for j in range(augmented_data.shape[1]):
+                if j < 360:  # LiDAR data
+                    augmented_data[i, j] = data.iloc[i, 359 - j]
+                else:  # Angular velocity (last column)
+                    augmented_data[i, j] = round(0 - float(data.iloc[i, j]), 2)
+        return pd.DataFrame(augmented_data)
 
 
 class AIModelManager:
@@ -196,6 +448,9 @@ class AIModelManager:
 # Global instance for the visualizer to use
 ai_model_manager = AIModelManager()
 
+# Global trainer instance
+regression_trainer = RegressionModelTrainer()
+
 
 def load_ai_model(model_path):
     """Convenience function to load a model"""
@@ -220,3 +475,22 @@ def get_ai_model_info():
 def clear_ai_model():
     """Convenience function to clear the model"""
     return ai_model_manager.clear_model()
+
+
+def train_regression_model(train_data, val_data, models_dir="models", progress_callback=None):
+    """
+    Convenience function to train a regression model
+    
+    Args:
+        train_data: List of training data lines
+        val_data: List of validation data lines
+        models_dir: Directory to save the model
+        progress_callback: Callback function for progress updates
+        
+    Returns:
+        dict: Training results
+    """
+    if progress_callback:
+        regression_trainer.set_progress_callback(progress_callback)
+    
+    return regression_trainer.train_regression_model(train_data, val_data, models_dir)

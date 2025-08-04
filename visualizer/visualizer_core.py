@@ -187,6 +187,7 @@ class VisualizerWindow:
             'clear_ai_model': self.clear_ai_model,
             'show_kbest_analysis': self.show_kbest_analysis,
             'show_current_kbest_positions': self.show_current_kbest_positions,
+            'train_regression_model': self.train_regression_model,
             
             # Help functions
             'show_about_dialog': self.show_about_dialog,
@@ -3729,6 +3730,165 @@ MOUSE CONTROLS:
         except Exception as e:
             error(f"Error opening log viewer dialog: {e}", "UI")
             messagebox.showerror("Error", f"Could not open log viewer: {str(e)}")
+    
+    def train_regression_model(self):
+        """Train a regression model using Random Forest algorithm from dataset splits"""
+        print("🚀 TRAIN BUTTON CLICKED - Starting training method...")
+        try:
+            from tkinter import messagebox
+            import subprocess
+            import sys
+            import tempfile
+            import threading
+            import os
+            
+            # Check if data is loaded
+            if not hasattr(self, 'data_manager') or not self.data_manager:
+                messagebox.showerror("Error", "No data loaded for training")
+                return
+            
+            # Check if data has been split
+            if not hasattr(self, 'train_ids') or not hasattr(self, 'val_ids') or not hasattr(self, 'test_ids'):
+                messagebox.showwarning("Warning", "No dataset found. Please split data first.")
+                return
+            
+            if not self.train_ids or not self.val_ids or not self.test_ids:
+                messagebox.showwarning("Warning", "Dataset splits are empty. Please split data first.")
+                return
+            
+            # Create progress popup
+            progress_popup = tk.Toplevel(self.root)
+            progress_popup.title("Training Regression Model")
+            progress_popup.geometry("700x600")
+            progress_popup.resizable(True, True)
+            progress_popup.transient(self.root)
+            progress_popup.grab_set()
+            
+            # Center the popup
+            progress_popup.update_idletasks()
+            x = (progress_popup.winfo_screenwidth() // 2) - (700 // 2)
+            y = (progress_popup.winfo_screenheight() // 2) - (600 // 2)
+            progress_popup.geometry(f"700x600+{x}+{y}")
+            
+            main_frame = ttk.Frame(progress_popup, padding=10)
+            main_frame.pack(fill='both', expand=True)
+            
+            # Title
+            title_label = ttk.Label(main_frame, text="Training Random Forest Regression Model", 
+                                   font=('Arial', 14, 'bold'))
+            title_label.pack(pady=(0, 10))
+            
+            # Progress text area
+            text_frame = ttk.Frame(main_frame)
+            text_frame.pack(fill='both', expand=True, pady=(0, 10))
+            
+            progress_text = tk.Text(text_frame, wrap='word', font=('Consolas', 9))
+            scrollbar = ttk.Scrollbar(text_frame, orient='vertical', command=progress_text.yview)
+            progress_text.configure(yscrollcommand=scrollbar.set)
+            
+            progress_text.pack(side='left', fill='both', expand=True)
+            scrollbar.pack(side='right', fill='y')
+            
+            # Status and control frame
+            control_frame = ttk.Frame(main_frame)
+            control_frame.pack(fill='x')
+            
+            status_var = tk.StringVar(value="Preparing training data...")
+            status_label = ttk.Label(control_frame, textvariable=status_var, font=('Arial', 10, 'bold'))
+            status_label.pack(side='left', fill='x', expand=True)
+            
+            # Close button
+            close_button = ttk.Button(control_frame, text="Close", state='disabled')
+            close_button.pack(side='right', padx=(10, 0))
+            
+            def append_output(text):
+                progress_text.config(state='normal')
+                progress_text.insert(tk.END, text)
+                progress_text.see(tk.END)
+                progress_text.config(state='disabled')
+                progress_popup.update_idletasks()
+            
+            def close_popup():
+                progress_popup.destroy()
+            
+            def run_training():
+                try:
+                    status_var.set("Starting training...")
+                    append_output("🚀 Preparing training data...\n")
+                    
+                    # Use ai_model directly with progress callback
+                    from visualizer.ai_model import train_regression_model as train_func
+                    
+                    # Prepare data
+                    train_data = []
+                    val_data = []
+                    
+                    for frame_id in self.train_ids:
+                        if frame_id < len(self.main_dataset.lines):
+                            train_data.append(self.main_dataset.lines[frame_id].strip())
+                    
+                    for frame_id in self.val_ids:
+                        if frame_id < len(self.main_dataset.lines):
+                            val_data.append(self.main_dataset.lines[frame_id].strip())
+                    
+                    append_output(f"📊 Training samples: {len(train_data)}\n")
+                    append_output(f"📊 Validation samples: {len(val_data)}\n")
+                    
+                    # Models directory
+                    models_dir = os.path.join(os.path.dirname(self.config.get('data_file', '')), '..', 'models')
+                    if not os.path.exists(models_dir):
+                        models_dir = 'models'
+                    if not os.path.exists(models_dir):
+                        os.makedirs(models_dir)
+                    
+                    append_output(f"📁 Models directory: {models_dir}\n")
+                    append_output("🤖 Starting Random Forest training...\n")
+                    append_output("=" * 70 + "\n")
+                    
+                    status_var.set("Training in progress...")
+                    
+                    def progress_callback(message):
+                        append_output(message + "\n")
+                    
+                    # Run training
+                    result = train_func(
+                        train_data=train_data,
+                        val_data=val_data,
+                        models_dir=models_dir,
+                        progress_callback=progress_callback
+                    )
+                    
+                    append_output("=" * 70 + "\n")
+                    
+                    if result.get("success"):
+                        append_output("🎉 Training completed successfully!\n")
+                        append_output(f"💾 Model saved to: {result.get('model_path')}\n")
+                        status_var.set("Training completed!")
+                    else:
+                        append_output(f"❌ Training failed: {result.get('error')}\n")
+                        status_var.set("Training failed!")
+                    
+                    close_button.config(state='normal', command=close_popup)
+                    
+                except Exception as e:
+                    append_output(f"❌ Error: {str(e)}\n")
+                    status_var.set("Training failed!")
+                    close_button.config(state='normal', command=close_popup)
+            
+            # Show initial messages
+            append_output("🔧 Initializing training process...\n")
+            append_output("✅ Validating dataset splits...\n")
+            
+            # Start training in thread after a short delay
+            def start_training():
+                threading.Thread(target=run_training, daemon=True).start()
+            
+            progress_popup.after(500, start_training)
+            
+        except Exception as e:
+            error_msg = f"Failed to start training: {str(e)}"
+            print(f"Error: {error_msg}")
+            messagebox.showerror("Training Error", error_msg)
     
     def on_closing(self):
         """Handle window close event"""
