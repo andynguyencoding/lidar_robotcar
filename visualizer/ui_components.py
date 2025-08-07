@@ -55,6 +55,7 @@ class UIManager:
         self.next_button = None
         self.last_button = None
         self.replace_button = None
+        self.delete_button = None
         
         # Modified frame buttons
         self.modified_button_frame = None
@@ -95,7 +96,13 @@ class UIManager:
         
         # Data splitting variables
         self.data_splits = {}  # Will store frame_id -> split_type mapping
-        self.split_ratios = [70, 20, 10]  # Default train:validation:test ratios
+        
+        # Load split ratios from preferences
+        try:
+            from .preferences import get_preference
+            self.split_ratios = get_preference("data", "split_ratios", [70, 20, 10])
+        except:
+            self.split_ratios = [70, 20, 10]  # Default train:validation:test ratios
         
         # Create menu bar
         self.create_menu_bar()
@@ -307,6 +314,11 @@ class UIManager:
                                         command=self.callbacks.get('replace_with_previous'), width=18)
         self.replace_button.pack(pady=(0, 3), fill='x')
         
+        # Delete button
+        self.delete_button = ttk.Button(input_panel, text="Delete", 
+                                       command=self.callbacks.get('delete_current_frame'), width=18)
+        self.delete_button.pack(pady=(0, 3), fill='x')
+        
         # Duplicate frame section
         duplicate_frame = ttk.Frame(input_panel)
         duplicate_frame.pack(pady=(5, 3), fill='x')
@@ -461,12 +473,6 @@ class UIManager:
         data_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Data", menu=data_menu)
         data_menu.add_command(label="Show Statistics...", command=self.callbacks.get('show_data_statistics'), accelerator="Ctrl+I")
-        
-        # Visual menu
-        visual_menu = tk.Menu(menubar, tearoff=0)
-        menubar.add_cascade(label="Visual", menu=visual_menu)
-        visual_menu.add_command(label="Scale Factor...", command=self.callbacks.get('show_scale_factor_dialog'))
-        visual_menu.add_command(label="Direction Ratio...", command=self.callbacks.get('show_direction_ratio_dialog'))
         
         # AI menu
         ai_menu = tk.Menu(menubar, tearoff=0)

@@ -32,6 +32,13 @@ class VisualizerWindow:
     """Main visualizer window and application controller"""
     
     def __init__(self, config):
+        # Load user preferences at startup
+        try:
+            from .config import load_preferences_into_config
+            load_preferences_into_config()
+        except Exception as e:
+            print(f"Warning: Could not load preferences: {e}")
+        
         self.config = config
         self.running = True
         self.paused = True  # Start paused by default
@@ -113,6 +120,13 @@ class VisualizerWindow:
         self.file_manager.add_recent_file(config['data_file'])
         self.ui_manager.update_recent_files_menu(self.file_manager.get_recent_files(), self.load_recent_file)
         
+        # Save as last opened file in preferences
+        try:
+            from .preferences import set_last_opened_file
+            set_last_opened_file(config['data_file'])
+        except Exception as pref_error:
+            print(f"Warning: Could not save last opened file preference: {pref_error}")
+        
         # Update initial UI state
         self.update_status()
         self.update_inputs()
@@ -173,6 +187,7 @@ class VisualizerWindow:
             'on_angular_velocity_input': self.on_angular_velocity_input,
             'on_linear_velocity_input': self.on_linear_velocity_input,
             'replace_with_previous': self.replace_with_previous,
+            'delete_current_frame': self.delete_current_frame,
             'on_key_press': self.on_key_press,
             'on_visualization_toggle': self.on_visualization_toggle,
             
@@ -193,9 +208,7 @@ class VisualizerWindow:
             'show_about_dialog': self.show_about_dialog,
             'show_controls_dialog': self.show_controls_dialog,
             
-            # Visual settings
-            'show_scale_factor_dialog': self.show_scale_factor_dialog,
-            'show_direction_ratio_dialog': self.show_direction_ratio_dialog,
+            # Visual controls (zoom only - other settings moved to preferences)
             'zoom_in': self.zoom_in,
             'zoom_out': self.zoom_out,
             
@@ -927,6 +940,101 @@ class VisualizerWindow:
             messagebox.showerror("Error", error_msg)
             print(f"Error in replace_with_previous: {e}")
     
+    def delete_current_frame(self):
+        """Delete the current frame from the dataset"""
+        try:
+            if not hasattr(self, 'data_manager') or not self.data_manager:
+                print("No data manager available")
+                return
+            
+            current_frame = self.data_manager._pointer
+            total_frames = len(self.data_manager.lines)
+            
+            # Don't allow deletion if there's only one frame left
+            if total_frames <= 1:
+                messagebox.showwarning("Cannot Delete", "Cannot delete the last remaining frame.")
+                return
+            
+            # Confirm deletion
+            result = messagebox.askyesno("Delete Frame", 
+                                       f"Are you sure you want to delete frame {current_frame + 1}?\n\n"
+                                       f"This action cannot be undone through the undo system.")
+            if not result:
+                return
+            
+            # Store information for navigation adjustment
+            frame_deleted = current_frame
+            
+            # Remove the frame from the dataset
+            del self.data_manager.lines[current_frame]
+            
+            # Update modified frames list - remove deleted frame and adjust indices
+            if hasattr(self.data_manager, '_modified_frames'):
+                updated_modified_frames = []
+                for modified_frame in self.data_manager._modified_frames:
+                    if modified_frame == current_frame:
+                        # Skip the deleted frame
+                        continue
+                    elif modified_frame > current_frame:
+                        # Adjust index for frames after the deleted one
+                        updated_modified_frames.append(modified_frame - 1)
+                    else:
+                        # Keep frames before the deleted one unchanged
+                        updated_modified_frames.append(modified_frame)
+                self.data_manager._modified_frames = updated_modified_frames
+            
+            # Update dataset splits if they exist
+            if hasattr(self.ui_manager, 'data_splits') and self.ui_manager.data_splits:
+                updated_splits = {}
+                for frame_idx, split_type in self.ui_manager.data_splits.items():
+                    if frame_idx == current_frame:
+                        # Skip the deleted frame
+                        continue
+                    elif frame_idx > current_frame:
+                        # Adjust index for frames after the deleted one
+                        updated_splits[frame_idx - 1] = split_type
+                    else:
+                        # Keep frames before the deleted one unchanged
+                        updated_splits[frame_idx] = split_type
+                self.ui_manager.data_splits = updated_splits
+            
+            # Adjust current pointer position
+            new_total_frames = len(self.data_manager.lines)
+            if current_frame >= new_total_frames:
+                # If we deleted the last frame, move to the new last frame
+                self.data_manager._pointer = new_total_frames - 1
+            # If we deleted a frame in the middle, the pointer stays the same
+            # (now pointing to the frame that was after the deleted one)
+            
+            # Reset read position to force re-reading
+            self.data_manager._read_pos = self.data_manager._pointer - 1
+            
+            # Mark data as changed
+            self.mark_data_changed()
+            
+            # Update the display
+            self.distances = self.data_manager.dataframe
+            if len(self.distances) == 361:
+                self.render_frame()
+                self.update_inputs()
+            
+            # Update button states if in inspect mode
+            if self.inspect_mode:
+                self.update_button_states()
+            
+            # Update status
+            self.update_status()
+            
+            print(f"Deleted frame {frame_deleted + 1}. Dataset now has {new_total_frames} frames.")
+            print(f"Current frame is now {self.data_manager._pointer + 1}")
+            
+        except Exception as e:
+            error_msg = f"Error deleting frame: {str(e)}"
+            messagebox.showerror("Error", error_msg)
+            print(f"Error in delete_current_frame: {e}")
+            import traceback
+            traceback.print_exc()
+    
     def on_key_press(self, event):
         """Handle keyboard events"""
         # Check if any text field is focused
@@ -1095,8 +1203,9 @@ class VisualizerWindow:
             # Update config
             self.config['data_file'] = filename
             
-            # Update window title
-            self.root.title(f"Lidar Visualizer - {os.path.basename(filename)}")
+            # Update window title and original title for proper saving behavior
+            self.original_title = f"Lidar Visualizer - {os.path.basename(filename)}"
+            self.root.title(self.original_title)
             
             # Reset state
             self.distances = []
@@ -1114,6 +1223,13 @@ class VisualizerWindow:
             # Add to recent files
             self.file_manager.add_recent_file(filename)
             self.ui_manager.update_recent_files_menu(self.file_manager.get_recent_files(), self.load_recent_file)
+            
+            # Save as last opened file in preferences
+            try:
+                from .preferences import set_last_opened_file
+                set_last_opened_file(filename)
+            except Exception as pref_error:
+                print(f"Warning: Could not save last opened file preference: {pref_error}")
             
             print(f"Successfully loaded data file: {filename}")
             return True
@@ -2009,7 +2125,11 @@ MOUSE CONTROLS:
     
     # Visual settings - stubs for now
     def show_scale_factor_dialog(self):
-        """Show scale factor configuration dialog"""
+        """Show scale factor configuration dialog
+        
+        DEPRECATED: This functionality has been moved to Settings > Preferences > Visual tab.
+        This method is kept for backward compatibility only.
+        """
         import tkinter as tk
         from tkinter import ttk, messagebox
         from .config import SCALE_FACTOR
@@ -2113,7 +2233,11 @@ MOUSE CONTROLS:
         popup.bind('<Escape>', lambda e: cancel_dialog())
     
     def show_direction_ratio_dialog(self):
-        """Show direction ratio configuration dialog"""
+        """Show direction ratio configuration dialog
+        
+        DEPRECATED: This functionality has been moved to Settings > Preferences > Visual tab.
+        This method is kept for backward compatibility only.
+        """
         import tkinter as tk
         from tkinter import ttk, messagebox
         
@@ -2221,15 +2345,15 @@ MOUSE CONTROLS:
         popup.bind('<Escape>', lambda e: cancel_dialog())
     
     def show_preferences_dialog(self):
-        """Show preferences dialog"""
+        """Show preferences dialog with tabbed interface"""
         import tkinter as tk
         from tkinter import ttk, messagebox
-        from .config import AUGMENTATION_UNIT, EXPORT_FILE_PREFIX, EXPORT_TIMESTAMP_FORMAT
+        from .config import AUGMENTATION_UNIT, EXPORT_FILE_PREFIX, EXPORT_TIMESTAMP_FORMAT, SCALE_FACTOR
         
         # Create popup window
         popup = tk.Toplevel(self.root)
-        popup.title("Preferences")
-        popup.geometry("500x500")
+        popup.title("Settings - Preferences")
+        popup.geometry("600x600")
         popup.resizable(False, False)
         
         # Center the popup
@@ -2238,36 +2362,106 @@ MOUSE CONTROLS:
         
         # Calculate center position
         popup.update_idletasks()
-        x = (popup.winfo_screenwidth() // 2) - (500 // 2)
-        y = (popup.winfo_screenheight() // 2) - (500 // 2)
-        popup.geometry(f"500x500+{x}+{y}")
+        x = (popup.winfo_screenwidth() // 2) - (600 // 2)
+        y = (popup.winfo_screenheight() // 2) - (600 // 2)
+        popup.geometry(f"600x600+{x}+{y}")
         
         main_frame = ttk.Frame(popup, padding=20)
         main_frame.pack(fill='both', expand=True)
         
         # Title
-        title_label = ttk.Label(main_frame, text="Preferences", 
-                               font=('Arial', 12, 'bold'))
+        title_label = ttk.Label(main_frame, text="Settings - Preferences", 
+                               font=('Arial', 14, 'bold'))
         title_label.pack(pady=(0, 15))
         
-        # Unit measurement configuration
-        unit_frame = ttk.LabelFrame(main_frame, text="Data Unit Measurement", padding=10)
+        # Create notebook for tabs
+        notebook = ttk.Notebook(main_frame)
+        notebook.pack(fill='both', expand=True, pady=(0, 20))
+        
+        # ============ Visual Tab ============
+        visual_frame = ttk.Frame(notebook)
+        notebook.add(visual_frame, text="Visual")
+        
+        visual_main = ttk.Frame(visual_frame, padding=15)
+        visual_main.pack(fill='both', expand=True)
+        
+        # Scale Factor Section
+        scale_frame = ttk.LabelFrame(visual_main, text="Scale Factor", padding=10)
+        scale_frame.pack(fill='x', pady=(0, 15))
+        
+        ttk.Label(scale_frame, text="Visualization Scale Factor:", 
+                 font=('Arial', 10)).pack(anchor='w')
+        ttk.Label(scale_frame, text="Controls the zoom level of LiDAR point visualization", 
+                 font=('Arial', 8), foreground='gray').pack(anchor='w', pady=(0, 5))
+        
+        scale_var = tk.StringVar(value=f"{SCALE_FACTOR:.4f}")
+        scale_entry = ttk.Entry(scale_frame, textvariable=scale_var, width=15)
+        scale_entry.pack(anchor='w', pady=(5, 5))
+        
+        ttk.Label(scale_frame, text=f"Current: {SCALE_FACTOR:.4f} | Range: 0.001 - 9999.0", 
+                 font=('Arial', 8), foreground='blue').pack(anchor='w')
+        
+        # Direction Ratio Section
+        direction_frame = ttk.LabelFrame(visual_main, text="Direction Ratio", padding=10)
+        direction_frame.pack(fill='x', pady=(0, 15))
+        
+        ttk.Label(direction_frame, text="Angular Velocity to Direction Mapping:", 
+                 font=('Arial', 10)).pack(anchor='w')
+        ttk.Label(direction_frame, text="Configure how angular velocity values map to visualization degrees", 
+                 font=('Arial', 8), foreground='gray').pack(anchor='w', pady=(0, 5))
+        
+        # Direction ratio controls
+        direction_controls = ttk.Frame(direction_frame)
+        direction_controls.pack(fill='x', pady=(5, 0))
+        
+        # Max degrees
+        degree_frame = ttk.Frame(direction_controls)
+        degree_frame.pack(fill='x', pady=(0, 5))
+        ttk.Label(degree_frame, text="Maximum Direction (degrees):").pack(side='left')
+        degree_var = tk.StringVar(value=str(self.renderer.direction_ratio_max_degree))
+        degree_entry = ttk.Entry(degree_frame, textvariable=degree_var, width=10)
+        degree_entry.pack(side='left', padx=(10, 0))
+        
+        # Max angular velocity
+        angular_frame = ttk.Frame(direction_controls)
+        angular_frame.pack(fill='x', pady=(0, 5))
+        ttk.Label(angular_frame, text="Angular Velocity Max:").pack(side='left')
+        angular_var = tk.StringVar(value=str(self.renderer.direction_ratio_max_angular))
+        angular_entry = ttk.Entry(angular_frame, textvariable=angular_var, width=10)
+        angular_entry.pack(side='left', padx=(10, 0))
+        
+        ttk.Label(direction_frame, text=f"Current: {self.renderer.direction_ratio_max_angular} → {self.renderer.direction_ratio_max_degree}°", 
+                 font=('Arial', 8), foreground='blue').pack(anchor='w', pady=(5, 0))
+        
+        # ============ Data Tab ============
+        data_frame = ttk.Frame(notebook)
+        notebook.add(data_frame, text="Data")
+        
+        data_main = ttk.Frame(data_frame, padding=15)
+        data_main.pack(fill='both', expand=True)
+        
+        # Unit Measurement Section
+        unit_frame = ttk.LabelFrame(data_main, text="Data Unit Measurement", padding=10)
         unit_frame.pack(fill='x', pady=(0, 15))
         
         ttk.Label(unit_frame, text="Unit:", 
                  font=('Arial', 10)).pack(anchor='w')
+        ttk.Label(unit_frame, text="Unit of measurement for distance values", 
+                 font=('Arial', 8), foreground='gray').pack(anchor='w', pady=(0, 5))
+        
         unit_var = tk.StringVar(value=AUGMENTATION_UNIT)
         unit_combo = ttk.Combobox(unit_frame, textvariable=unit_var, 
                                  values=["m", "mm"], width=10, state="readonly")
         unit_combo.pack(anchor='w', pady=(5, 0))
-        unit_combo.focus_set()
         
-        # Data split ratios configuration
-        split_frame = ttk.LabelFrame(main_frame, text="Data Split Ratios", padding=10)
+        # Data Split Ratios Section
+        split_frame = ttk.LabelFrame(data_main, text="Data Split Ratios", padding=10)
         split_frame.pack(fill='x', pady=(0, 15))
         
         ttk.Label(split_frame, text="Split Ratios (Train:Validation:Test):", 
                  font=('Arial', 10)).pack(anchor='w')
+        ttk.Label(split_frame, text="Percentages for dataset splitting (must sum to 100%)", 
+                 font=('Arial', 8), foreground='gray').pack(anchor='w', pady=(0, 5))
         
         ratios_frame = ttk.Frame(split_frame)
         ratios_frame.pack(anchor='w', pady=(5, 0))
@@ -2290,41 +2484,54 @@ MOUSE CONTROLS:
         
         ttk.Label(ratios_frame, text="%").pack(side='left', padx=(5, 0))
         
-        # Export configuration
-        export_frame = ttk.LabelFrame(main_frame, text="Export Settings", padding=10)
-        export_frame.pack(fill='x', pady=(0, 15))
+        ttk.Label(split_frame, text=f"Current: {':'.join(map(str, self.ui_manager.split_ratios))}%", 
+                 font=('Arial', 8), foreground='blue').pack(anchor='w', pady=(5, 0))
         
-        # File prefix setting
-        ttk.Label(export_frame, text="File Prefix:", 
+        # ============ Export Tab ============
+        export_frame = ttk.Frame(notebook)
+        notebook.add(export_frame, text="Export")
+        
+        export_main = ttk.Frame(export_frame, padding=15)
+        export_main.pack(fill='both', expand=True)
+        
+        # File Prefix Section
+        prefix_frame = ttk.LabelFrame(export_main, text="File Naming", padding=10)
+        prefix_frame.pack(fill='x', pady=(0, 15))
+        
+        ttk.Label(prefix_frame, text="File Prefix:", 
                  font=('Arial', 10)).pack(anchor='w')
+        ttk.Label(prefix_frame, text="Prefix for exported dataset files", 
+                 font=('Arial', 8), foreground='gray').pack(anchor='w', pady=(0, 5))
+        
         prefix_var = tk.StringVar(value=EXPORT_FILE_PREFIX)
-        prefix_entry = ttk.Entry(export_frame, textvariable=prefix_var, width=30)
+        prefix_entry = ttk.Entry(prefix_frame, textvariable=prefix_var, width=30)
         prefix_entry.pack(anchor='w', pady=(5, 10))
         
-        # Timestamp format setting
-        ttk.Label(export_frame, text="Timestamp Format:", 
+        # Timestamp Format Section
+        timestamp_frame = ttk.LabelFrame(export_main, text="Timestamp Format", padding=10)
+        timestamp_frame.pack(fill='x', pady=(0, 15))
+        
+        ttk.Label(timestamp_frame, text="Timestamp Format:", 
                  font=('Arial', 10)).pack(anchor='w')
+        ttk.Label(timestamp_frame, text="Format for timestamps in exported filenames", 
+                 font=('Arial', 8), foreground='gray').pack(anchor='w', pady=(0, 5))
+        
         timestamp_var = tk.StringVar(value=EXPORT_TIMESTAMP_FORMAT)
-        
-        # Timestamp format options
-        timestamp_frame = ttk.Frame(export_frame)
-        timestamp_frame.pack(anchor='w', pady=(5, 5))
-        
         timestamp_combo = ttk.Combobox(timestamp_frame, textvariable=timestamp_var, 
                                       values=["%Y%m%d_%H%M%S", "%Y-%m-%d_%H-%M-%S", "%Y%m%d", "%H%M%S"], 
                                       width=20, state="readonly")
-        timestamp_combo.pack(side='left')
+        timestamp_combo.pack(anchor='w', pady=(5, 10))
         
-        # Preview of export filenames
-        preview_frame = ttk.Frame(export_frame)
-        preview_frame.pack(fill='x', pady=(10, 0))
+        # Preview Section
+        preview_frame = ttk.LabelFrame(export_main, text="File Preview", padding=10)
+        preview_frame.pack(fill='x', pady=(0, 15))
         
-        ttk.Label(preview_frame, text="Preview:", 
+        ttk.Label(preview_frame, text="Example Export Files:", 
                  font=('Arial', 9, 'bold')).pack(anchor='w')
         
         preview_var = tk.StringVar()
         preview_label = ttk.Label(preview_frame, textvariable=preview_var, 
-                                 font=('Arial', 8), foreground='blue', wraplength=400)
+                                 font=('Arial', 8), foreground='blue', wraplength=500)
         preview_label.pack(anchor='w', pady=(5, 0))
         
         def update_preview(*args):
@@ -2333,7 +2540,7 @@ MOUSE CONTROLS:
                 from datetime import datetime
                 timestamp = datetime.now().strftime(timestamp_var.get())
                 prefix = prefix_var.get()
-                preview_text = f"Example files:\n{prefix}_train_{timestamp}.csv\n{prefix}_validation_{timestamp}.csv\n{prefix}_test_{timestamp}.csv"
+                preview_text = f"{prefix}_train_{timestamp}.csv\n{prefix}_validation_{timestamp}.csv\n{prefix}_test_{timestamp}.csv"
                 preview_var.set(preview_text)
             except:
                 preview_var.set("Invalid timestamp format")
@@ -2342,24 +2549,119 @@ MOUSE CONTROLS:
         prefix_var.trace('w', update_preview)
         timestamp_var.trace('w', update_preview)
         
-        # Current values info
-        info_text = f"Current Unit: {AUGMENTATION_UNIT}\nCurrent Split: {':'.join(map(str, self.ui_manager.split_ratios))}%"
-        info_label = ttk.Label(main_frame, text=info_text, 
-                              font=('Arial', 8), foreground='gray')
-        info_label.pack(pady=(0, 15))
+        # ============ Session Tab ============
+        session_frame = ttk.Frame(notebook)
+        notebook.add(session_frame, text="Session")
         
-        # Button frame
+        session_main = ttk.Frame(session_frame, padding=15)
+        session_main.pack(fill='both', expand=True)
+        
+        # File Memory Section
+        file_memory_frame = ttk.LabelFrame(session_main, text="File Memory", padding=10)
+        file_memory_frame.pack(fill='x', pady=(0, 15))
+        
+        # Remember last file setting
+        remember_var = tk.BooleanVar()
+        try:
+            from .preferences import should_remember_last_file, get_last_opened_file
+            remember_var.set(should_remember_last_file())
+            current_last_file = get_last_opened_file()
+        except:
+            remember_var.set(True)
+            current_last_file = None
+        
+        remember_checkbox = ttk.Checkbutton(file_memory_frame, 
+                                           text="Remember last opened file", 
+                                           variable=remember_var)
+        remember_checkbox.pack(anchor='w', pady=(0, 5))
+        
+        ttk.Label(file_memory_frame, text="Automatically open the last file when starting the application", 
+                 font=('Arial', 8), foreground='gray').pack(anchor='w', pady=(0, 10))
+        
+        # Current last file display
+        current_file_frame = ttk.Frame(file_memory_frame)
+        current_file_frame.pack(fill='x', pady=(0, 10))
+        
+        ttk.Label(current_file_frame, text="Current last file:", 
+                 font=('Arial', 9, 'bold')).pack(anchor='w')
+        
+        if current_last_file:
+            last_file_text = os.path.basename(current_last_file)
+            last_file_tooltip = current_last_file
+        else:
+            last_file_text = "(None)"
+            last_file_tooltip = "No file has been opened yet"
+        
+        current_file_label = ttk.Label(current_file_frame, text=last_file_text, 
+                                      font=('Arial', 8), foreground='blue')
+        current_file_label.pack(anchor='w', pady=(2, 0))
+        
+        # Add tooltip for full path
+        if current_last_file:
+            def show_tooltip(event):
+                """Show tooltip with full path"""
+                pass  # Could implement tooltip here if needed
+        
+        # Clear last file button
+        def clear_last_file():
+            """Clear the last opened file preference"""
+            try:
+                from .preferences import set_preference, save_preferences
+                set_preference("session", "last_opened_file", None)
+                save_preferences()
+                current_file_label.config(text="(None)")
+                messagebox.showinfo("Cleared", "Last opened file preference has been cleared.")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to clear last file: {str(e)}")
+        
+        ttk.Button(file_memory_frame, text="Clear Last File", 
+                  command=clear_last_file, width=15).pack(anchor='w', pady=(5, 0))
+        
+        # ============ Button Frame ============
         button_frame = ttk.Frame(main_frame)
         button_frame.pack(pady=(10, 0))
         
         def apply_preferences():
-            """Apply the new preferences"""
+            """Apply all preferences"""
             try:
+                # Visual settings
+                new_scale = float(scale_var.get())
+                new_degree = float(degree_var.get())
+                new_angular = float(angular_var.get())
+                
+                # Data settings
                 new_unit = unit_var.get()
+                train_ratio = int(train_var.get())
+                val_ratio = int(val_var.get())
+                test_ratio = int(test_var.get())
+                
+                # Export settings
                 new_prefix = prefix_var.get().strip()
                 new_timestamp = timestamp_var.get()
                 
-                # Validate inputs
+                # Validate visual settings
+                if new_scale <= 0 or new_scale >= 9999:
+                    messagebox.showerror("Error", "Scale factor must be between 0 and 9999")
+                    return
+                
+                if new_degree <= 0 or new_degree > 180:
+                    messagebox.showerror("Error", "Direction must be between 0 and 180 degrees")
+                    return
+                
+                if new_angular <= 0:
+                    messagebox.showerror("Error", "Angular velocity max must be greater than 0")
+                    return
+                
+                # Validate data settings
+                if train_ratio + val_ratio + test_ratio != 100:
+                    messagebox.showerror("Error", "Split ratios must sum to 100%")
+                    return
+                
+                if train_ratio <= 0 or val_ratio <= 0 or test_ratio <= 0:
+                    messagebox.showerror("Error", "All split ratios must be greater than 0")
+                    return
+                
+                # Validate export settings
                 if not new_prefix:
                     messagebox.showerror("Error", "File prefix cannot be empty")
                     return
@@ -2372,39 +2674,48 @@ MOUSE CONTROLS:
                     messagebox.showerror("Error", "Invalid timestamp format")
                     return
                 
-                # Validate and update split ratios
-                train_ratio = int(train_var.get())
-                val_ratio = int(val_var.get())
-                test_ratio = int(test_var.get())
-                
-                if train_ratio + val_ratio + test_ratio != 100:
-                    messagebox.showerror("Error", "Split ratios must sum to 100%")
-                    return
-                
-                if train_ratio <= 0 or val_ratio <= 0 or test_ratio <= 0:
-                    messagebox.showerror("Error", "All split ratios must be greater than 0")
-                    return
-                
-                # Update config module
+                # Apply visual settings
                 import config
-                config.AUGMENTATION_UNIT = new_unit
-                config.EXPORT_FILE_PREFIX = new_prefix
-                config.EXPORT_TIMESTAMP_FORMAT = new_timestamp
+                config.SCALE_FACTOR = new_scale
                 
                 # Update local config as well
                 from . import config as local_config
+                local_config.SCALE_FACTOR = new_scale
+                
+                # Apply direction ratio
+                self.renderer.set_direction_ratio(new_degree, new_angular)
+                
+                # Apply data settings
+                config.AUGMENTATION_UNIT = new_unit
                 local_config.AUGMENTATION_UNIT = new_unit
+                self.ui_manager.split_ratios = [train_ratio, val_ratio, test_ratio]
+                
+                # Apply export settings
+                config.EXPORT_FILE_PREFIX = new_prefix
+                config.EXPORT_TIMESTAMP_FORMAT = new_timestamp
                 local_config.EXPORT_FILE_PREFIX = new_prefix
                 local_config.EXPORT_TIMESTAMP_FORMAT = new_timestamp
                 
-                # Update split ratios
-                self.ui_manager.split_ratios = [train_ratio, val_ratio, test_ratio]
+                # Apply session settings
+                remember_last = remember_var.get()
+                from .preferences import set_last_file_memory_enabled
+                set_last_file_memory_enabled(remember_last)
+                
+                # Save preferences to file
+                try:
+                    local_config.save_current_config_to_preferences()
+                except Exception as save_error:
+                    print(f"Warning: Could not save preferences: {save_error}")
+                
+                # Update status to reflect changes
+                self.update_status()
                 
                 popup.destroy()
-                print(f"Preferences updated - Unit: {new_unit}, Prefix: {new_prefix}, Timestamp: {new_timestamp}, Split ratios: {train_ratio}:{val_ratio}:{test_ratio}")
+                messagebox.showinfo("Success", "Preferences updated and saved successfully!")
+                print(f"Preferences updated - Scale: {new_scale:.4f}, Direction: {new_angular}→{new_degree}°, Unit: {new_unit}, Split: {train_ratio}:{val_ratio}:{test_ratio}%, Prefix: {new_prefix}, Timestamp: {new_timestamp}, Remember Last File: {remember_last}")
                 
-            except ValueError:
-                messagebox.showerror("Error", "Split ratios must be valid integers")
+            except ValueError as e:
+                messagebox.showerror("Error", "Please enter valid numeric values")
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to update preferences: {str(e)}")
         
@@ -2412,15 +2723,119 @@ MOUSE CONTROLS:
             """Cancel the dialog"""
             popup.destroy()
         
-        # OK and Cancel buttons
-        ttk.Button(button_frame, text="OK", command=apply_preferences, 
+        def reset_to_defaults():
+            """Reset all preferences to defaults"""
+            try:
+                from .preferences import get_preferences_manager
+                from tkinter import messagebox
+                
+                result = messagebox.askyesno("Reset Preferences", 
+                                           "Are you sure you want to reset all preferences to defaults?\n\nThis action cannot be undone.")
+                if result:
+                    prefs_manager = get_preferences_manager()
+                    defaults = prefs_manager.reset_to_defaults()
+                    prefs_manager.save_preferences()
+                    
+                    # Update UI with defaults
+                    scale_var.set(f"{defaults['visual']['scale_factor']:.4f}")
+                    degree_var.set(str(defaults['visual']['direction_ratio_max_degree']))
+                    angular_var.set(str(defaults['visual']['direction_ratio_max_angular']))
+                    unit_var.set(defaults['data']['augmentation_unit'])
+                    train_var.set(str(defaults['data']['split_ratios'][0]))
+                    val_var.set(str(defaults['data']['split_ratios'][1]))
+                    test_var.set(str(defaults['data']['split_ratios'][2]))
+                    prefix_var.set(defaults['export']['file_prefix'])
+                    timestamp_var.set(defaults['export']['timestamp_format'])
+                    
+                    messagebox.showinfo("Reset Complete", "All preferences have been reset to defaults.")
+                    
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to reset preferences: {str(e)}")
+        
+        def export_preferences():
+            """Export preferences to a file"""
+            try:
+                from tkinter import filedialog, messagebox
+                from .preferences import get_preferences_manager
+                
+                file_path = filedialog.asksaveasfilename(
+                    title="Export Preferences",
+                    defaultextension=".json",
+                    filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+                )
+                
+                if file_path:
+                    prefs_manager = get_preferences_manager()
+                    success = prefs_manager.export_preferences(file_path)
+                    if success:
+                        messagebox.showinfo("Export Successful", f"Preferences exported to:\n{file_path}")
+                    else:
+                        messagebox.showerror("Export Failed", "Failed to export preferences.")
+                        
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to export preferences: {str(e)}")
+        
+        def import_preferences():
+            """Import preferences from a file"""
+            try:
+                from tkinter import filedialog, messagebox
+                from .preferences import get_preferences_manager
+                
+                file_path = filedialog.askopenfilename(
+                    title="Import Preferences",
+                    filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+                )
+                
+                if file_path:
+                    prefs_manager = get_preferences_manager()
+                    success = prefs_manager.import_preferences(file_path)
+                    if success:
+                        # Update UI with imported values
+                        prefs = prefs_manager.get_all_preferences()
+                        scale_var.set(f"{prefs['visual']['scale_factor']:.4f}")
+                        degree_var.set(str(prefs['visual']['direction_ratio_max_degree']))
+                        angular_var.set(str(prefs['visual']['direction_ratio_max_angular']))
+                        unit_var.set(prefs['data']['augmentation_unit'])
+                        train_var.set(str(prefs['data']['split_ratios'][0]))
+                        val_var.set(str(prefs['data']['split_ratios'][1]))
+                        test_var.set(str(prefs['data']['split_ratios'][2]))
+                        prefix_var.set(prefs['export']['file_prefix'])
+                        timestamp_var.set(prefs['export']['timestamp_format'])
+                        
+                        messagebox.showinfo("Import Successful", f"Preferences imported from:\n{file_path}")
+                    else:
+                        messagebox.showerror("Import Failed", "Failed to import preferences.")
+                        
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to import preferences: {str(e)}")
+        
+        # Button layout with two rows
+        # First row: Import/Export/Reset buttons
+        action_frame = ttk.Frame(button_frame)
+        action_frame.pack(pady=(0, 5))
+        
+        ttk.Button(action_frame, text="Import...", command=import_preferences, 
+                  width=12).pack(side='left', padx=(0, 5))
+        ttk.Button(action_frame, text="Export...", command=export_preferences, 
+                  width=12).pack(side='left', padx=(0, 5))
+        ttk.Button(action_frame, text="Reset to Defaults", command=reset_to_defaults, 
+                  width=15).pack(side='left')
+        
+        # Second row: OK and Cancel buttons
+        ok_cancel_frame = ttk.Frame(button_frame)
+        ok_cancel_frame.pack()
+        
+        ttk.Button(ok_cancel_frame, text="OK", command=apply_preferences, 
                   width=10).pack(side='left', padx=(0, 10))
-        ttk.Button(button_frame, text="Cancel", command=cancel_dialog, 
+        ttk.Button(ok_cancel_frame, text="Cancel", command=cancel_dialog, 
                   width=10).pack(side='left')
         
         # Bind Enter and Escape keys
-        unit_combo.bind('<Return>', lambda e: apply_preferences())
         popup.bind('<Escape>', lambda e: cancel_dialog())
+        
+        # Set focus to the first tab
+        notebook.select(0)
+        unit_combo.focus_set()
         
         # Initial preview update
         update_preview()

@@ -46,6 +46,100 @@ EXPORT_FILE_PREFIX = "lidar_dataset"  # Default prefix for exported files
 EXPORT_TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"  # Default timestamp format for exported files
 
 
+def load_preferences_into_config():
+    """
+    Load saved preferences and update configuration variables
+    Call this at application startup
+    """
+    try:
+        from .preferences import load_preferences
+        
+        prefs = load_preferences()
+        
+        # Update global configuration variables with saved preferences
+        global SCALE_FACTOR, DIRECTION_RATIO_MAX_DEGREE, DIRECTION_RATIO_MAX_ANGULAR
+        global AUGMENTATION_UNIT, EXPORT_FILE_PREFIX, EXPORT_TIMESTAMP_FORMAT
+        global DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, DEFAULT_CANVAS_SIZE
+        global LOG_LEVEL, LOG_TO_FILE, LOG_TO_CONSOLE
+        
+        # Visual preferences
+        SCALE_FACTOR = prefs.get("visual", {}).get("scale_factor", SCALE_FACTOR)
+        DIRECTION_RATIO_MAX_DEGREE = prefs.get("visual", {}).get("direction_ratio_max_degree", DIRECTION_RATIO_MAX_DEGREE)
+        DIRECTION_RATIO_MAX_ANGULAR = prefs.get("visual", {}).get("direction_ratio_max_angular", DIRECTION_RATIO_MAX_ANGULAR)
+        
+        # Data preferences
+        AUGMENTATION_UNIT = prefs.get("data", {}).get("augmentation_unit", AUGMENTATION_UNIT)
+        
+        # Export preferences
+        EXPORT_FILE_PREFIX = prefs.get("export", {}).get("file_prefix", EXPORT_FILE_PREFIX)
+        EXPORT_TIMESTAMP_FORMAT = prefs.get("export", {}).get("timestamp_format", EXPORT_TIMESTAMP_FORMAT)
+        
+        # UI preferences
+        DEFAULT_WINDOW_WIDTH = prefs.get("ui", {}).get("window_width", DEFAULT_WINDOW_WIDTH)
+        DEFAULT_WINDOW_HEIGHT = prefs.get("ui", {}).get("window_height", DEFAULT_WINDOW_HEIGHT)
+        DEFAULT_CANVAS_SIZE = prefs.get("ui", {}).get("canvas_size", DEFAULT_CANVAS_SIZE)
+        
+        # Logging preferences
+        LOG_LEVEL = prefs.get("logging", {}).get("log_level", LOG_LEVEL)
+        LOG_TO_FILE = prefs.get("logging", {}).get("log_to_file", LOG_TO_FILE)
+        LOG_TO_CONSOLE = prefs.get("logging", {}).get("log_to_console", LOG_TO_CONSOLE)
+        
+        print(f"✅ Preferences loaded: Scale={SCALE_FACTOR:.3f}, Unit={AUGMENTATION_UNIT}, Export prefix={EXPORT_FILE_PREFIX}")
+        
+    except Exception as e:
+        print(f"⚠️  Warning: Could not load preferences: {e}")
+
+
+def save_current_config_to_preferences():
+    """
+    Save current configuration variables to preferences file
+    Call this when settings are changed
+    """
+    try:
+        from .preferences import update_preferences, save_preferences
+        
+        # Prepare preferences update
+        updates = {
+            "visual": {
+                "scale_factor": SCALE_FACTOR,
+                "direction_ratio_max_degree": DIRECTION_RATIO_MAX_DEGREE,
+                "direction_ratio_max_angular": DIRECTION_RATIO_MAX_ANGULAR
+            },
+            "data": {
+                "augmentation_unit": AUGMENTATION_UNIT
+            },
+            "export": {
+                "file_prefix": EXPORT_FILE_PREFIX,
+                "timestamp_format": EXPORT_TIMESTAMP_FORMAT
+            },
+            "ui": {
+                "window_width": DEFAULT_WINDOW_WIDTH,
+                "window_height": DEFAULT_WINDOW_HEIGHT,
+                "canvas_size": DEFAULT_CANVAS_SIZE
+            },
+            "logging": {
+                "log_level": LOG_LEVEL,
+                "log_to_file": LOG_TO_FILE,
+                "log_to_console": LOG_TO_CONSOLE
+            }
+        }
+        
+        # Update and save preferences
+        update_preferences(updates)
+        success = save_preferences()
+        
+        if success:
+            print("✅ Preferences saved successfully")
+        else:
+            print("❌ Failed to save preferences")
+            
+        return success
+        
+    except Exception as e:
+        print(f"❌ Error saving preferences: {e}")
+        return False
+
+
 def calculate_scale_factor(data_manager, sample_size=10):
     """
     Analyze sample data to determine optimal scale factor for visualization

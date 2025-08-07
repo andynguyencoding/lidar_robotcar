@@ -93,8 +93,25 @@ def run(data_file=None, highlight_frames=True, show_augmented=False, inspection_
     Main entry point for running the visualizer
     """
     try:
+        # Determine which file to use
+        file_to_use = data_file
+        
+        if file_to_use is None:
+            # Try to use the last opened file
+            try:
+                from .preferences import get_last_opened_file
+                last_file = get_last_opened_file()
+                if last_file:
+                    file_to_use = last_file
+                    print(f"📂 Loading last opened file: {os.path.basename(last_file)}")
+                else:
+                    file_to_use = 'data/run1/out1.txt'  # Default fallback
+            except Exception as e:
+                print(f"Warning: Could not load last opened file: {e}")
+                file_to_use = 'data/run1/out1.txt'  # Default fallback
+        
         config = {
-            'data_file': data_file or 'data/run1/out1.txt',
+            'data_file': file_to_use,
             'highlight_frames': highlight_frames,
             'augmented_mode': show_augmented,
             'inspection_mode': inspection_mode

@@ -1,3 +1,4 @@
+/home/andy/mysource/github/lidar_robotcar/data/simulation/autonomous_lidar_data_20250807_155010.csv
 /home/andy/mysource/github/lidar_robotcar/data/run1/out1.txt
-/home/andy/mysource/github/lidar_robotcar/data/run2/corrected_data.csv
-/home/andy/mysource/github/lidar_robotcar/data/simulation/lidar_training_data_20250727_095526_full.csv
+/home/andy/mysource/github/lidar_robotcar/data/simulation/autonomous_lidar_data_20250807_153759.csv
+/home/andy/mysource/github/lidar_robotcar/data/simulation/lidar_training_data_20250727_095526_half2.csv
