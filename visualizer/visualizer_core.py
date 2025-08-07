@@ -20,6 +20,7 @@ from .visualization_renderer import VisualizationRenderer
 from .data_input import DataManager
 from .logger import get_logger, debug, info, warning, error, log_ui_event, log_navigation, log_dataset_operation, log_function
 from .ai_model import is_ai_model_loaded, load_ai_model, get_ai_prediction, get_ai_model_info
+from .custom_dialogs import ask_yes_no, ask_yes_no_cancel
 from tkinter import messagebox, filedialog
 
 
@@ -52,6 +53,10 @@ class VisualizerWindow:
         # Track unsaved changes
         self.has_unsaved_changes = False
         self.original_title = f"Lidar Visualizer - {os.path.basename(config['data_file'])}"
+        
+        # Timing protection for quit operations
+        self.last_dialog_close_time = 0
+        self.dialog_cooldown_ms = 500  # 500ms cooldown after dialog closes
         
         # Initialize subsystems
         self.file_manager = FileManager()
@@ -824,6 +829,14 @@ class VisualizerWindow:
     
     def quit_visualizer(self):
         """Quit the visualizer"""
+        import time
+        current_time = time.time() * 1000  # Convert to milliseconds
+        
+        # Prevent rapid re-triggering after dialog closes
+        if (current_time - self.last_dialog_close_time) < self.dialog_cooldown_ms:
+            debug("Quit operation ignored due to cooldown period", "Quit")
+            return
+        
         self.on_closing()
     
     def mark_data_changed(self):
@@ -843,10 +856,10 @@ class VisualizerWindow:
         if not self.has_unsaved_changes:
             return True  # No changes, safe to exit
         
-        result = messagebox.askyesnocancel(
+        result = ask_yes_no_cancel(self.root,
             "Unsaved Changes",
             "You have unsaved changes. Do you want to save before exiting?",
-            icon='warning'
+            'warning'
         )
         
         if result is True:  # Yes - save and exit
@@ -941,45 +954,68 @@ class VisualizerWindow:
             print(f"Error in replace_with_previous: {e}")
     
     def delete_current_frame(self):
-        """Delete the current frame from the dataset"""
+        """Delete multiple frames starting from the current frame based on count value"""
         try:
             if not hasattr(self, 'data_manager') or not self.data_manager:
                 print("No data manager available")
                 return
             
+            # Get the number of frames to delete from UI
+            try:
+                delete_count = int(self.ui_manager.duplicate_count_var.get())
+                if delete_count <= 0:
+                    messagebox.showwarning("Invalid Count", "Count must be greater than 0.")
+                    return
+            except (ValueError, AttributeError):
+                messagebox.showwarning("Invalid Count", "Please enter a valid number.")
+                return
+            
             current_frame = self.data_manager._pointer
             total_frames = len(self.data_manager.lines)
             
-            # Don't allow deletion if there's only one frame left
-            if total_frames <= 1:
-                messagebox.showwarning("Cannot Delete", "Cannot delete the last remaining frame.")
+            # Calculate how many frames can actually be deleted
+            frames_to_delete = min(delete_count, total_frames - current_frame)
+            
+            # Don't allow deletion if it would leave less than 1 frame
+            if total_frames - frames_to_delete < 1:
+                messagebox.showwarning("Cannot Delete", 
+                                     f"Cannot delete {delete_count} frames. This would leave no frames remaining.\n"
+                                     f"Maximum you can delete: {total_frames - 1}")
                 return
             
             # Confirm deletion
-            result = messagebox.askyesno("Delete Frame", 
-                                       f"Are you sure you want to delete frame {current_frame + 1}?\n\n"
-                                       f"This action cannot be undone through the undo system.")
+            if frames_to_delete == 1:
+                message = f"Are you sure you want to delete frame {current_frame + 1}?"
+            else:
+                end_frame = current_frame + frames_to_delete - 1
+                message = f"Are you sure you want to delete {frames_to_delete} frames ({current_frame + 1} to {end_frame + 1})?"
+            
+            result = ask_yes_no(self.root, "Delete Frames", 
+                               f"{message}\n\n"
+                               f"This action cannot be undone through the undo system.", 'warning')
             if not result:
                 return
             
-            # Store information for navigation adjustment
-            frame_deleted = current_frame
+            # Store information for logging
+            first_deleted = current_frame
+            last_deleted = current_frame + frames_to_delete - 1
             
-            # Remove the frame from the dataset
-            del self.data_manager.lines[current_frame]
+            # Remove the frames from the dataset (delete from current position forward)
+            for i in range(frames_to_delete):
+                del self.data_manager.lines[current_frame]  # Always delete at current position since list shrinks
             
-            # Update modified frames list - remove deleted frame and adjust indices
+            # Update modified frames list - remove deleted frames and adjust indices
             if hasattr(self.data_manager, '_modified_frames'):
                 updated_modified_frames = []
                 for modified_frame in self.data_manager._modified_frames:
-                    if modified_frame == current_frame:
-                        # Skip the deleted frame
+                    if current_frame <= modified_frame <= last_deleted:
+                        # Skip deleted frames
                         continue
-                    elif modified_frame > current_frame:
-                        # Adjust index for frames after the deleted one
-                        updated_modified_frames.append(modified_frame - 1)
+                    elif modified_frame > last_deleted:
+                        # Adjust index for frames after the deleted range
+                        updated_modified_frames.append(modified_frame - frames_to_delete)
                     else:
-                        # Keep frames before the deleted one unchanged
+                        # Keep frames before the deleted range unchanged
                         updated_modified_frames.append(modified_frame)
                 self.data_manager._modified_frames = updated_modified_frames
             
@@ -987,24 +1023,24 @@ class VisualizerWindow:
             if hasattr(self.ui_manager, 'data_splits') and self.ui_manager.data_splits:
                 updated_splits = {}
                 for frame_idx, split_type in self.ui_manager.data_splits.items():
-                    if frame_idx == current_frame:
-                        # Skip the deleted frame
+                    if current_frame <= frame_idx <= last_deleted:
+                        # Skip deleted frames
                         continue
-                    elif frame_idx > current_frame:
-                        # Adjust index for frames after the deleted one
-                        updated_splits[frame_idx - 1] = split_type
+                    elif frame_idx > last_deleted:
+                        # Adjust index for frames after the deleted range
+                        updated_splits[frame_idx - frames_to_delete] = split_type
                     else:
-                        # Keep frames before the deleted one unchanged
+                        # Keep frames before the deleted range unchanged
                         updated_splits[frame_idx] = split_type
                 self.ui_manager.data_splits = updated_splits
             
             # Adjust current pointer position
             new_total_frames = len(self.data_manager.lines)
             if current_frame >= new_total_frames:
-                # If we deleted the last frame, move to the new last frame
+                # If we deleted beyond the end, move to the new last frame
                 self.data_manager._pointer = new_total_frames - 1
-            # If we deleted a frame in the middle, the pointer stays the same
-            # (now pointing to the frame that was after the deleted one)
+            # If we deleted frames in the middle, the pointer stays the same
+            # (now pointing to the frame that was after the deleted range)
             
             # Reset read position to force re-reading
             self.data_manager._read_pos = self.data_manager._pointer - 1
@@ -1025,11 +1061,14 @@ class VisualizerWindow:
             # Update status
             self.update_status()
             
-            print(f"Deleted frame {frame_deleted + 1}. Dataset now has {new_total_frames} frames.")
+            if frames_to_delete == 1:
+                print(f"Deleted frame {first_deleted + 1}. Dataset now has {new_total_frames} frames.")
+            else:
+                print(f"Deleted {frames_to_delete} frames ({first_deleted + 1} to {last_deleted + 1}). Dataset now has {new_total_frames} frames.")
             print(f"Current frame is now {self.data_manager._pointer + 1}")
             
         except Exception as e:
-            error_msg = f"Error deleting frame: {str(e)}"
+            error_msg = f"Error deleting frames: {str(e)}"
             messagebox.showerror("Error", error_msg)
             print(f"Error in delete_current_frame: {e}")
             import traceback
@@ -1067,6 +1106,10 @@ class VisualizerWindow:
             self.quit_visualizer()
         elif event.keysym.lower() == 'r':
             self.replace_with_previous()
+        elif event.keysym.lower() == 'e':
+            self.delete_current_frame()
+        elif event.keysym.lower() == 'd':
+            self.duplicate_current_frame()
         elif event.keysym.lower() == 'u':
             self.undo_last_change()
         elif event.keysym == 'Left' and self.inspect_mode:
@@ -1538,12 +1581,12 @@ File has Headers: {'Yes' if current_stats.get('has_headers', False) else 'No'}""
             """Augment data by reversing lidar points and negating angular velocity"""
             try:
                 # Prompt user for append or rewrite option
-                choice = messagebox.askyesnocancel(
+                choice = ask_yes_no_cancel(self.root,
                     "Augment Data Options",
                     "How would you like to handle the augmented data?\n\n" +
                     "• Yes: Append augmented data to existing data\n" +
                     "• No: Replace existing data with augmented data only\n" +
-                    "• Cancel: Cancel augmentation"
+                    "• Cancel: Cancel augmentation", 'question'
                 )
                 
                 if choice is None:  # User clicked Cancel
@@ -1961,6 +2004,8 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
   H              Flip Horizontal
   V              Flip Vertical
   R              Replace current frame with previous
+  E              Delete current frame(s)
+  D              Duplicate current frame
   U              Undo last change
 
 🤖 AI FEATURES:
@@ -2729,8 +2774,8 @@ MOUSE CONTROLS:
                 from .preferences import get_preferences_manager
                 from tkinter import messagebox
                 
-                result = messagebox.askyesno("Reset Preferences", 
-                                           "Are you sure you want to reset all preferences to defaults?\n\nThis action cannot be undone.")
+                result = ask_yes_no(self.root, "Reset Preferences", 
+                                  "Are you sure you want to reset all preferences to defaults?\n\nThis action cannot be undone.", 'warning')
                 if result:
                     prefs_manager = get_preferences_manager()
                     defaults = prefs_manager.reset_to_defaults()
@@ -4316,9 +4361,12 @@ MOUSE CONTROLS:
             self.renderer.cleanup()
             self.root.quit()
             self.root.destroy()
-        except Exception as e:
-            print(f"Error during cleanup: {e}")
-        finally:
-            # Force exit if needed
+            
+            # Only exit if we successfully get here (user didn't cancel)
             import sys
             sys.exit(0)
+        except Exception as e:
+            print(f"Error during cleanup: {e}")
+            # Only force exit if there was an error during cleanup
+            import sys
+            sys.exit(1)

@@ -6,6 +6,7 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox
 from .config import DEFAULT_CANVAS_SIZE
 from .logger import debug, info, log_ui_event, get_logger, set_log_level, get_log_level
+from .custom_dialogs import ask_yes_no, ask_yes_no_cancel
 import os
 
 
@@ -56,6 +57,7 @@ class UIManager:
         self.last_button = None
         self.replace_button = None
         self.delete_button = None
+        self.duplicate_button = None
         
         # Modified frame buttons
         self.modified_button_frame = None
@@ -315,31 +317,28 @@ class UIManager:
         self.replace_button.pack(pady=(0, 3), fill='x')
         
         # Delete button
-        self.delete_button = ttk.Button(input_panel, text="Delete", 
+        self.delete_button = ttk.Button(input_panel, text="Delete (E)", 
                                        command=self.callbacks.get('delete_current_frame'), width=18)
         self.delete_button.pack(pady=(0, 3), fill='x')
         
-        # Duplicate frame section
-        duplicate_frame = ttk.Frame(input_panel)
-        duplicate_frame.pack(pady=(5, 3), fill='x')
+        # Duplicate button (same width as Delete, positioned above count field)
+        self.duplicate_button = ttk.Button(input_panel, text="Duplicate (D)", 
+                                          command=self.callbacks.get('duplicate_current_frame'), width=18)
+        self.duplicate_button.pack(pady=(0, 3), fill='x')
         
-        ttk.Label(duplicate_frame, text="Duplicate Frame:", 
-                 font=('Arial', 9, 'bold'), foreground='purple').pack(anchor='w')
+        # Shared count controls for Delete and Duplicate operations
+        count_frame = ttk.Frame(input_panel)
+        count_frame.pack(pady=(5, 3), fill='x')
         
-        duplicate_controls = ttk.Frame(duplicate_frame)
-        duplicate_controls.pack(fill='x', pady=(2, 0))
+        # Count input field
+        count_controls = ttk.Frame(count_frame)
+        count_controls.pack(fill='x', pady=(0, 5))
         
-        # Frame count input for duplication
-        ttk.Label(duplicate_controls, text="Count:", font=('Arial', 8)).pack(side='left')
+        ttk.Label(count_controls, text="Count:", font=('Arial', 8)).pack(side='left')
         self.duplicate_count_var = tk.StringVar(value="1")
-        duplicate_count_entry = ttk.Entry(duplicate_controls, textvariable=self.duplicate_count_var, 
+        duplicate_count_entry = ttk.Entry(count_controls, textvariable=self.duplicate_count_var, 
                                          width=5, font=('Courier', 9))
-        duplicate_count_entry.pack(side='left', padx=(5, 5))
-        
-        # Duplicate button
-        duplicate_button = ttk.Button(duplicate_controls, text="Dup.", 
-                                     command=self.callbacks.get('duplicate_current_frame'), width=10)
-        duplicate_button.pack(side='right')
+        duplicate_count_entry.pack(side='left', padx=(5, 0))
         
         # Undo instruction
         ttk.Label(input_panel, text="💡 Press U for undo", 
@@ -365,7 +364,7 @@ class UIManager:
         modified_info_label.pack(pady=(0, 5), fill='x')
         
         # Instructions
-        ttk.Label(input_panel, text="📝 Enter to update | R to replace | U to undo", 
+        ttk.Label(input_panel, text="📝 Enter to update | R to replace | E to delete | D to duplicate | U to undo", 
                  font=('Arial', 7), foreground='darkgreen', 
                  wraplength=140).pack(anchor='w', pady=(0, 8), fill='x')
         
@@ -523,13 +522,15 @@ class UIManager:
             self.root.bind('<KeyPress>', self.callbacks.get('on_key_press'))
             self.root.focus_set()
         
-        # Keyboard shortcuts
+        # Keyboard shortcuts - use bind instead of bind_all to avoid interfering with dialogs
         if self.callbacks.get('browse_data_file'):
-            self.root.bind_all("<Control-o>", lambda e: self.callbacks.get('browse_data_file')())
+            self.root.bind("<Control-o>", lambda e: self.callbacks.get('browse_data_file')())
         if self.callbacks.get('save_data'):
-            self.root.bind_all("<Control-s>", lambda e: self.callbacks.get('save_data')())
+            self.root.bind("<Control-s>", lambda e: self.callbacks.get('save_data')())
         if self.callbacks.get('show_data_statistics'):
-            self.root.bind_all("<Control-i>", lambda e: self.callbacks.get('show_data_statistics')())
+            self.root.bind("<Control-i>", lambda e: self.callbacks.get('show_data_statistics')())
+        if self.callbacks.get('quit_app'):
+            self.root.bind("<Control-q>", lambda e: self.callbacks.get('quit_app')())
     
     def update_canvas_size(self, new_size):
         """Update the canvas size"""
@@ -708,7 +709,7 @@ class LogViewerDialog:
     
     def clear_logs(self):
         """Clear the log display"""
-        if messagebox.askyesno("Clear Logs", "Clear the log display? This won't delete the log file."):
+        if ask_yes_no(self.parent, "Clear Logs", "Clear the log display? This won't delete the log file.", 'question'):
             self.log_text.delete(1.0, tk.END)
 
 
@@ -1043,7 +1044,7 @@ class LogViewerDialog:
     
     def clear_display(self):
         """Clear the log display"""
-        if messagebox.askyesno("Clear Display", "Clear the log display?"):
+        if ask_yes_no(self.parent, "Clear Display", "Clear the log display?", 'question'):
             self.log_text.delete(1.0, tk.END)
             self.status_label.config(text="Display cleared")
     
