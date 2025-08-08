@@ -440,13 +440,13 @@ class UIManager:
         
         # Pygame frame
         self.pygame_frame = tk.Frame(parent, width=self.current_canvas_size, 
-                                    height=self.current_canvas_size, bg='lightgray')
+                                    height=self.current_canvas_size, bg='#2d2d2d')  # Dark gray to match visualization
         self.pygame_frame.pack(pady=5, expand=True, fill='both')
         self.pygame_frame.pack_propagate(False)
         
         # Canvas
         self.canvas = tk.Canvas(self.pygame_frame, width=self.current_canvas_size, 
-                               height=self.current_canvas_size, bg='white')
+                               height=self.current_canvas_size, bg='#2d2d2d')  # Dark gray background
         self.canvas.pack(expand=True)
     
     def create_menu_bar(self):

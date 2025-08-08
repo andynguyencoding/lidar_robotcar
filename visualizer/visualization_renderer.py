@@ -40,7 +40,17 @@ class VisualizationRenderer:
             # Create pygame surface with dynamic size
             self.screen = pygame.display.set_mode([self.current_canvas_size, self.current_canvas_size])
             self.clock = pygame.time.Clock()
-            self.font = pygame.font.Font(None, 32)
+            
+            # Initialize fonts - try different sizes for different uses
+            try:
+                self.font = pygame.font.Font(None, 24)  # Main font for labels
+                self.small_font = pygame.font.Font(None, 18)  # Smaller font for distance markers
+                self.title_font = pygame.font.Font(None, 32)  # Title font
+            except:
+                # Fallback to default font
+                self.font = pygame.font.Font(None, 24)
+                self.small_font = pygame.font.Font(None, 18)
+                self.title_font = pygame.font.Font(None, 32)
             
             return True
         except Exception as e:
@@ -65,16 +75,22 @@ class VisualizationRenderer:
             return
             
         try:
-            # Fill background
-            self.screen.fill((250, 250, 250))
+            # Fill background with dark theme
+            self.screen.fill((45, 45, 45))  # Dark gray background
             
             # Calculate center and scale based on current canvas size
             center_x = self.current_canvas_size / 2
-            center_y = self.current_canvas_size / 2
+            center_y = self.current_canvas_size / 2 - 8  # Move visualization up by ~8 pixels (≈7mm)
             
             # Dynamic scale factor based on canvas size - import dynamically to get updated value
             from .config import SCALE_FACTOR
             dynamic_scale = SCALE_FACTOR * (self.current_canvas_size / 800)  # 800 is the original SCREEN_WIDTH
+            
+            # Draw polar coordinate grid
+            self._draw_polar_grid(center_x, center_y, dynamic_scale)
+            
+            # Draw distance circles centered on robot
+            self._draw_robot_distance_circles(center_x, center_y, dynamic_scale)
             
             # Render lidar points
             self._render_lidar_points(distances, center_x, center_y, dynamic_scale, augmented_mode)
@@ -114,6 +130,150 @@ class VisualizationRenderer:
             import traceback
             traceback.print_exc()
     
+    def _draw_robot_distance_circles(self, center_x, center_y, dynamic_scale):
+        """Draw concentric circles centered on robot to show distance ranges"""
+        max_radius = min(center_x, center_y) * 0.85  # Match the grid boundary
+        
+        # Colors for robot-centered distance circles (gray like in reference image)
+        robot_circle_color = (120, 120, 120)  # Medium gray for regular circles
+        robot_circle_major_color = (140, 140, 140)  # Slightly brighter gray for major circles
+        label_color = (160, 160, 160)  # Light gray for labels
+        
+        # Calculate distance intervals based on current data scale
+        # Your data is typically 0.15m to 1.5m range, so we need smaller intervals
+        max_data_distance = 2.0  # meters - reasonable max for indoor LiDAR
+        
+        # Use smaller, more appropriate intervals for the actual data range
+        robot_distances = [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0]
+        major_distances = [0.5, 1.0, 1.5, 2.0]  # Major circles every 0.5m
+        
+        # Draw robot-centered distance circles
+        for distance in robot_distances:
+            radius = distance * dynamic_scale * 1000  # Convert to mm scale to match your data
+            if radius <= max_radius and radius > 5:  # Make sure even small circles are visible
+                # Use different styling for major vs minor circles
+                is_major = distance in major_distances
+                
+                if is_major:
+                    # Major circles - more visible
+                    color = robot_circle_major_color
+                    line_width = 2
+                else:
+                    # Minor circles - more subtle
+                    color = robot_circle_color
+                    line_width = 1
+                
+                # Draw the circle
+                pygame.draw.circle(self.screen, color, (int(center_x), int(center_y)), int(radius), line_width)
+                
+                # Add distance labels for major circles only, positioned at 45° angle
+                if is_major and hasattr(self, 'small_font') and self.small_font:
+                    # Position label at 45 degrees (northeast)
+                    label_angle = math.radians(45)
+                    label_x = center_x + radius * math.cos(label_angle)
+                    label_y = center_y - radius * math.sin(label_angle)
+                    
+                    # Format distance label
+                    label_text = f"{distance:.1f}m"
+                    
+                    text_surface = self.small_font.render(label_text, True, label_color)
+                    text_rect = text_surface.get_rect()
+                    
+                    # Position the label slightly outside the circle
+                    label_x -= text_rect.width // 2
+                    label_y -= text_rect.height // 2
+                    
+                    # Ensure label stays within screen bounds
+                    label_x = max(5, min(label_x, self.current_canvas_size - text_rect.width - 5))
+                    label_y = max(35, min(label_y, self.current_canvas_size - text_rect.height - 5))
+                    
+                    # Add a subtle background for better readability
+                    background_rect = pygame.Rect(label_x - 2, label_y - 1, text_rect.width + 4, text_rect.height + 2)
+                    pygame.draw.rect(self.screen, (20, 20, 20), background_rect)
+                    
+                    self.screen.blit(text_surface, (label_x, label_y))
+
+    def _draw_title(self):
+        """Draw the visualization title"""
+        if hasattr(self, 'title_font') and self.title_font:
+            title_text = "LiDAR Scan Data"
+            text_surface = self.title_font.render(title_text, True, (200, 200, 200))
+            text_rect = text_surface.get_rect()
+            title_x = (self.current_canvas_size - text_rect.width) // 2
+            title_y = 10
+            self.screen.blit(text_surface, (title_x, title_y))
+
+    def _draw_polar_grid(self, center_x, center_y, dynamic_scale):
+        """Draw polar coordinate grid with distance circles and angle lines"""
+        max_radius = min(center_x, center_y) * 0.85  # Use 85% of available space to leave room for labels
+        
+        # Grid colors
+        grid_color = (70, 70, 70)  # Darker gray for grid lines
+        major_grid_color = (100, 100, 100)  # Lighter gray for major grid lines
+        label_color = (180, 180, 180)  # Brighter gray for labels
+        
+        # Calculate appropriate distance intervals based on scale
+        # Determine what distance would fill about 80% of the display
+        max_display_distance = max_radius / dynamic_scale * 0.8
+        
+        # Choose appropriate intervals
+        if max_display_distance > 20:
+            distance_intervals = [5, 10, 15, 20, 25, 30]
+        elif max_display_distance > 10:
+            distance_intervals = [2, 4, 6, 8, 10, 12, 14, 16]
+        else:
+            distance_intervals = [1, 2, 3, 4, 5, 6, 7, 8]
+        
+        # Draw concentric circles for distance indicators
+        for i, distance in enumerate(distance_intervals):
+            radius = distance * dynamic_scale
+            if radius <= max_radius:
+                # Use major grid color for every other circle
+                color = major_grid_color if i % 2 == 1 else grid_color
+                line_width = 2 if i % 2 == 1 else 1
+                pygame.draw.circle(self.screen, color, (int(center_x), int(center_y)), int(radius), line_width)
+                
+                # Draw distance labels using smaller font
+                font_to_use = self.small_font if hasattr(self, 'small_font') and self.small_font else self.font
+                if font_to_use and i % 2 == 1:  # Only label major circles
+                    label_text = f"{distance}m"
+                    text_surface = font_to_use.render(label_text, True, label_color)
+                    text_rect = text_surface.get_rect()
+                    label_x = center_x + radius - text_rect.width // 2
+                    label_y = center_y - text_rect.height // 2 - 3
+                    if label_x > 5 and label_y > 35 and label_x + text_rect.width < self.current_canvas_size - 5:
+                        self.screen.blit(text_surface, (label_x, label_y))
+        
+        # Draw radial lines for angle indicators
+        angles = [0, 45, 90, 135, 180, 225, 270, 315]  # Degrees
+        for i, angle in enumerate(angles):
+            angle_rad = math.radians(angle)
+            end_x = center_x + max_radius * math.cos(angle_rad)
+            end_y = center_y - max_radius * math.sin(angle_rad)  # Negative because pygame y-axis is flipped
+            
+            # Use major grid color for cardinal directions (0°, 90°, 180°, 270°)
+            color = major_grid_color if angle % 90 == 0 else grid_color
+            line_width = 2 if angle % 90 == 0 else 1
+            pygame.draw.line(self.screen, color, (center_x, center_y), (end_x, end_y), line_width)
+            
+            # Draw angle labels
+            font_to_use = self.small_font if hasattr(self, 'small_font') and self.small_font else self.font
+            if font_to_use:
+                label_text = f"{angle}°"
+                text_surface = font_to_use.render(label_text, True, label_color)
+                text_rect = text_surface.get_rect()
+                
+                # Position labels slightly outside the grid
+                label_radius = max_radius + 25
+                label_x = center_x + label_radius * math.cos(angle_rad) - text_rect.width // 2
+                label_y = center_y - label_radius * math.sin(angle_rad) - text_rect.height // 2
+                
+                # Ensure labels stay within screen bounds
+                label_x = max(5, min(label_x, self.current_canvas_size - text_rect.width - 5))
+                label_y = max(35, min(label_y, self.current_canvas_size - text_rect.height - 5))  # Account for title
+                
+                self.screen.blit(text_surface, (label_x, label_y))
+
     def _render_lidar_points(self, distances, center_x, center_y, dynamic_scale, augmented_mode):
         """Render the lidar points"""
         for x in range(LIDAR_RESOLUTION):
@@ -131,25 +291,32 @@ class VisualizationRenderer:
             y_coord = -math.sin(x / 180 * math.pi) * a + center_y
             
             if x in DECISIVE_FRAME_POSITIONS:
-                # Draw line and important point
-                pygame.draw.line(self.screen, (255, 0, 255), (center_x, center_y),
+                # Draw line and important point - magenta for decisive positions
+                pygame.draw.line(self.screen, (255, 120, 255), (center_x, center_y),
                                (x_coord, y_coord), 2)
-                pygame.draw.circle(self.screen, (255, 0, 0), (x_coord, y_coord), 3)
+                pygame.draw.circle(self.screen, (255, 80, 80), (x_coord, y_coord), 5)
+                # Add a bright center dot
+                pygame.draw.circle(self.screen, (255, 200, 200), (x_coord, y_coord), 2)
             else:
-                pygame.draw.circle(self.screen, (0, 0, 0), (x_coord, y_coord), 2)
+                # Regular LiDAR points in bright green with better visibility
+                pygame.draw.circle(self.screen, (100, 255, 100), (x_coord, y_coord), 3)
+                # Add a darker center for better definition
+                pygame.draw.circle(self.screen, (50, 200, 50), (x_coord, y_coord), 1)
     
     def _draw_car(self, center_x, center_y):
         """Draw the car representation"""
-        car_radius = max(6, int(12 * (self.current_canvas_size / 800)))
-        pygame.draw.circle(self.screen, (252, 132, 3), (center_x, center_y), car_radius)
+        car_radius = max(8, int(16 * (self.current_canvas_size / 800)))
+        # Draw car as orange circle with black outline
+        pygame.draw.circle(self.screen, (255, 140, 0), (center_x, center_y), car_radius)
+        pygame.draw.circle(self.screen, (200, 200, 200), (center_x, center_y), car_radius, 2)
     
     def _draw_forward_direction(self, center_x, center_y, car_line_length):
-        """Draw forward direction line (blue)"""
-        pygame.draw.line(self.screen, (0, 0, 255), (center_x, center_y),
-                        (center_x + car_line_length, center_y), 3)
+        """Draw forward direction line (bright blue)"""
+        pygame.draw.line(self.screen, (100, 150, 255), (center_x, center_y),
+                        (center_x + car_line_length, center_y), 4)
     
     def _draw_current_velocity(self, distances, center_x, center_y, car_line_length, augmented_mode):
-        """Draw current velocity direction line (green)"""
+        """Draw current velocity direction line (bright green)"""
         try:
             turn_value = float(distances[360])
             if augmented_mode:
@@ -162,13 +329,13 @@ class VisualizationRenderer:
             x = math.cos(angle_radians) * car_line_length
             y = math.sin(angle_radians) * car_line_length
             
-            pygame.draw.line(self.screen, (0, 255, 0), (center_x, center_y),
-                           (center_x + x, center_y - y), 3)
+            pygame.draw.line(self.screen, (100, 255, 100), (center_x, center_y),
+                           (center_x + x, center_y - y), 4)
         except (ValueError, TypeError):
             pass
     
     def _draw_previous_velocity(self, prev_angular_velocity, center_x, center_y, car_line_length, augmented_mode):
-        """Draw previous velocity direction line (red)"""
+        """Draw previous velocity direction line (bright red)"""
         try:
             prev_turn_value = prev_angular_velocity
             if augmented_mode:
@@ -181,14 +348,14 @@ class VisualizationRenderer:
             prev_x = math.cos(prev_angle_radians) * car_line_length
             prev_y = math.sin(prev_angle_radians) * car_line_length
             
-            pygame.draw.line(self.screen, (255, 0, 0), (center_x, center_y),
-                           (center_x + prev_x, center_y - prev_y), 2)
+            pygame.draw.line(self.screen, (255, 100, 100), (center_x, center_y),
+                           (center_x + prev_x, center_y - prev_y), 3)
         except (ValueError, TypeError):
             pass
     
     def _draw_ai_prediction(self, distances, center_x, center_y, car_line_length, 
                           augmented_mode, data_manager, pred_turn_var):
-        """Draw AI prediction direction line (orange)"""
+        """Draw AI prediction direction line (bright orange)"""
         try:
             if is_ai_model_loaded():
                 # Get AI prediction for current frame
@@ -210,8 +377,8 @@ class VisualizationRenderer:
                     ai_x = math.cos(ai_angle_radians) * car_line_length
                     ai_y = math.sin(ai_angle_radians) * car_line_length
                     
-                    pygame.draw.line(self.screen, (255, 165, 0), (center_x, center_y),
-                                   (center_x + ai_x, center_y - ai_y), 3)
+                    pygame.draw.line(self.screen, (255, 200, 100), (center_x, center_y),
+                                   (center_x + ai_x, center_y - ai_y), 4)
                 else:
                     pred_turn_var.set("--")
             else:
