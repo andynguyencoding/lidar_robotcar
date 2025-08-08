@@ -41,6 +41,12 @@ AUGMENTATION_UNIT = "m"  # Default unit measurement: "m" or "mm"
 DIRECTION_RATIO_MAX_DEGREE = 45.0  # Maximum degrees for visualization
 DIRECTION_RATIO_MAX_ANGULAR = 1.0  # Angular velocity value that maps to max degree
 
+# LiDAR point visualization configuration
+NORMAL_POINT_RADIUS = 3  # Default radius for normal lidar points
+NORMAL_POINT_CENTER_RADIUS = 1  # Default radius for normal point centers
+DECISIVE_POINT_RADIUS = 5  # Default radius for decisive frame points
+DECISIVE_POINT_CENTER_RADIUS = 2  # Default radius for decisive point centers
+
 # Export Configuration
 EXPORT_FILE_PREFIX = "lidar_dataset"  # Default prefix for exported files
 EXPORT_TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"  # Default timestamp format for exported files
@@ -61,11 +67,17 @@ def load_preferences_into_config():
         global AUGMENTATION_UNIT, EXPORT_FILE_PREFIX, EXPORT_TIMESTAMP_FORMAT
         global DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT, DEFAULT_CANVAS_SIZE
         global LOG_LEVEL, LOG_TO_FILE, LOG_TO_CONSOLE
+        global NORMAL_POINT_RADIUS, NORMAL_POINT_CENTER_RADIUS
+        global DECISIVE_POINT_RADIUS, DECISIVE_POINT_CENTER_RADIUS
         
         # Visual preferences
         SCALE_FACTOR = prefs.get("visual", {}).get("scale_factor", SCALE_FACTOR)
         DIRECTION_RATIO_MAX_DEGREE = prefs.get("visual", {}).get("direction_ratio_max_degree", DIRECTION_RATIO_MAX_DEGREE)
         DIRECTION_RATIO_MAX_ANGULAR = prefs.get("visual", {}).get("direction_ratio_max_angular", DIRECTION_RATIO_MAX_ANGULAR)
+        NORMAL_POINT_RADIUS = prefs.get("visual", {}).get("normal_point_radius", NORMAL_POINT_RADIUS)
+        NORMAL_POINT_CENTER_RADIUS = prefs.get("visual", {}).get("normal_point_center_radius", NORMAL_POINT_CENTER_RADIUS)
+        DECISIVE_POINT_RADIUS = prefs.get("visual", {}).get("decisive_point_radius", DECISIVE_POINT_RADIUS)
+        DECISIVE_POINT_CENTER_RADIUS = prefs.get("visual", {}).get("decisive_point_center_radius", DECISIVE_POINT_CENTER_RADIUS)
         
         # Data preferences
         AUGMENTATION_UNIT = prefs.get("data", {}).get("augmentation_unit", AUGMENTATION_UNIT)
@@ -103,7 +115,11 @@ def save_current_config_to_preferences():
             "visual": {
                 "scale_factor": SCALE_FACTOR,
                 "direction_ratio_max_degree": DIRECTION_RATIO_MAX_DEGREE,
-                "direction_ratio_max_angular": DIRECTION_RATIO_MAX_ANGULAR
+                "direction_ratio_max_angular": DIRECTION_RATIO_MAX_ANGULAR,
+                "normal_point_radius": NORMAL_POINT_RADIUS,
+                "normal_point_center_radius": NORMAL_POINT_CENTER_RADIUS,
+                "decisive_point_radius": DECISIVE_POINT_RADIUS,
+                "decisive_point_center_radius": DECISIVE_POINT_CENTER_RADIUS
             },
             "data": {
                 "augmentation_unit": AUGMENTATION_UNIT

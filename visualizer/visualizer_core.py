@@ -2398,7 +2398,7 @@ MOUSE CONTROLS:
         # Create popup window
         popup = tk.Toplevel(self.root)
         popup.title("Settings - Preferences")
-        popup.geometry("600x600")
+        popup.geometry("650x700")
         popup.resizable(False, False)
         
         # Center the popup
@@ -2407,9 +2407,9 @@ MOUSE CONTROLS:
         
         # Calculate center position
         popup.update_idletasks()
-        x = (popup.winfo_screenwidth() // 2) - (600 // 2)
-        y = (popup.winfo_screenheight() // 2) - (600 // 2)
-        popup.geometry(f"600x600+{x}+{y}")
+        x = (popup.winfo_screenwidth() // 2) - (650 // 2)
+        y = (popup.winfo_screenheight() // 2) - (700 // 2)
+        popup.geometry(f"650x700+{x}+{y}")
         
         main_frame = ttk.Frame(popup, padding=20)
         main_frame.pack(fill='both', expand=True)
@@ -2477,6 +2477,57 @@ MOUSE CONTROLS:
         
         ttk.Label(direction_frame, text=f"Current: {self.renderer.direction_ratio_max_angular} → {self.renderer.direction_ratio_max_degree}°", 
                  font=('Arial', 8), foreground='blue').pack(anchor='w', pady=(5, 0))
+        
+        # LiDAR Point Radius Section
+        point_radius_frame = ttk.LabelFrame(visual_main, text="LiDAR Point Radius", padding=8)
+        point_radius_frame.pack(fill='x', pady=(0, 10))
+        
+        # Normal points configuration
+        normal_points_frame = ttk.LabelFrame(point_radius_frame, text="Normal Points", padding=5)
+        normal_points_frame.pack(fill='x', pady=(0, 5))
+        
+        # Normal point radius
+        normal_radius_frame = ttk.Frame(normal_points_frame)
+        normal_radius_frame.pack(fill='x', pady=(0, 2))
+        ttk.Label(normal_radius_frame, text="Outer:").pack(side='left')
+        
+        from .config import NORMAL_POINT_RADIUS, NORMAL_POINT_CENTER_RADIUS
+        normal_radius_var = tk.StringVar(value=str(NORMAL_POINT_RADIUS))
+        normal_radius_entry = ttk.Entry(normal_radius_frame, textvariable=normal_radius_var, width=6)
+        normal_radius_entry.pack(side='left', padx=(5, 10))
+        
+        ttk.Label(normal_radius_frame, text="Center:").pack(side='left')
+        normal_center_var = tk.StringVar(value=str(NORMAL_POINT_CENTER_RADIUS))
+        normal_center_entry = ttk.Entry(normal_radius_frame, textvariable=normal_center_var, width=6)
+        normal_center_entry.pack(side='left', padx=(5, 10))
+        
+        ttk.Label(normal_radius_frame, text=f"(Green: {NORMAL_POINT_RADIUS}/{NORMAL_POINT_CENTER_RADIUS}px)", 
+                 font=('Arial', 8), foreground='darkgreen').pack(side='left')
+        
+        # Decisive points configuration
+        decisive_points_frame = ttk.LabelFrame(point_radius_frame, text="Decisive Points", padding=5)
+        decisive_points_frame.pack(fill='x', pady=(0, 5))
+        
+        # Decisive point radius
+        decisive_radius_frame = ttk.Frame(decisive_points_frame)
+        decisive_radius_frame.pack(fill='x', pady=(0, 2))
+        ttk.Label(decisive_radius_frame, text="Outer:").pack(side='left')
+        
+        from .config import DECISIVE_POINT_RADIUS, DECISIVE_POINT_CENTER_RADIUS
+        decisive_radius_var = tk.StringVar(value=str(DECISIVE_POINT_RADIUS))
+        decisive_radius_entry = ttk.Entry(decisive_radius_frame, textvariable=decisive_radius_var, width=6)
+        decisive_radius_entry.pack(side='left', padx=(5, 10))
+        
+        ttk.Label(decisive_radius_frame, text="Center:").pack(side='left')
+        decisive_center_var = tk.StringVar(value=str(DECISIVE_POINT_CENTER_RADIUS))
+        decisive_center_entry = ttk.Entry(decisive_radius_frame, textvariable=decisive_center_var, width=6)
+        decisive_center_entry.pack(side='left', padx=(5, 10))
+        
+        ttk.Label(decisive_radius_frame, text=f"(Red: {DECISIVE_POINT_RADIUS}/{DECISIVE_POINT_CENTER_RADIUS}px)", 
+                 font=('Arial', 8), foreground='darkred').pack(side='left')
+        
+        ttk.Label(point_radius_frame, text="Range: 1-20 pixels", 
+                 font=('Arial', 8), foreground='blue').pack(anchor='w', pady=(3, 0))
         
         # ============ Data Tab ============
         data_frame = ttk.Frame(notebook)
@@ -2674,6 +2725,12 @@ MOUSE CONTROLS:
                 new_degree = float(degree_var.get())
                 new_angular = float(angular_var.get())
                 
+                # LiDAR point radius settings
+                new_normal_radius = int(normal_radius_var.get())
+                new_normal_center = int(normal_center_var.get())
+                new_decisive_radius = int(decisive_radius_var.get())
+                new_decisive_center = int(decisive_center_var.get())
+                
                 # Data settings
                 new_unit = unit_var.get()
                 train_ratio = int(train_var.get())
@@ -2695,6 +2752,23 @@ MOUSE CONTROLS:
                 
                 if new_angular <= 0:
                     messagebox.showerror("Error", "Angular velocity max must be greater than 0")
+                    return
+                
+                # Validate radius settings
+                if not (1 <= new_normal_radius <= 20):
+                    messagebox.showerror("Error", "Normal point radius must be between 1 and 20 pixels")
+                    return
+                
+                if not (1 <= new_normal_center <= 20):
+                    messagebox.showerror("Error", "Normal point center radius must be between 1 and 20 pixels")
+                    return
+                
+                if not (1 <= new_decisive_radius <= 20):
+                    messagebox.showerror("Error", "Decisive point radius must be between 1 and 20 pixels")
+                    return
+                
+                if not (1 <= new_decisive_center <= 20):
+                    messagebox.showerror("Error", "Decisive point center radius must be between 1 and 20 pixels")
                     return
                 
                 # Validate data settings
@@ -2730,6 +2804,12 @@ MOUSE CONTROLS:
                 # Apply direction ratio
                 self.renderer.set_direction_ratio(new_degree, new_angular)
                 
+                # Apply radius settings
+                local_config.NORMAL_POINT_RADIUS = new_normal_radius
+                local_config.NORMAL_POINT_CENTER_RADIUS = new_normal_center
+                local_config.DECISIVE_POINT_RADIUS = new_decisive_radius
+                local_config.DECISIVE_POINT_CENTER_RADIUS = new_decisive_center
+                
                 # Apply data settings
                 config.AUGMENTATION_UNIT = new_unit
                 local_config.AUGMENTATION_UNIT = new_unit
@@ -2757,7 +2837,7 @@ MOUSE CONTROLS:
                 
                 popup.destroy()
                 messagebox.showinfo("Success", "Preferences updated and saved successfully!")
-                print(f"Preferences updated - Scale: {new_scale:.4f}, Direction: {new_angular}→{new_degree}°, Unit: {new_unit}, Split: {train_ratio}:{val_ratio}:{test_ratio}%, Prefix: {new_prefix}, Timestamp: {new_timestamp}, Remember Last File: {remember_last}")
+                print(f"Preferences updated - Scale: {new_scale:.4f}, Direction: {new_angular}→{new_degree}°, Normal Points: {new_normal_radius}/{new_normal_center}px, Decisive Points: {new_decisive_radius}/{new_decisive_center}px, Unit: {new_unit}, Split: {train_ratio}:{val_ratio}:{test_ratio}%, Prefix: {new_prefix}, Timestamp: {new_timestamp}, Remember Last File: {remember_last}")
                 
             except ValueError as e:
                 messagebox.showerror("Error", "Please enter valid numeric values")
@@ -2785,6 +2865,10 @@ MOUSE CONTROLS:
                     scale_var.set(f"{defaults['visual']['scale_factor']:.4f}")
                     degree_var.set(str(defaults['visual']['direction_ratio_max_degree']))
                     angular_var.set(str(defaults['visual']['direction_ratio_max_angular']))
+                    normal_radius_var.set(str(defaults['visual']['normal_point_radius']))
+                    normal_center_var.set(str(defaults['visual']['normal_point_center_radius']))
+                    decisive_radius_var.set(str(defaults['visual']['decisive_point_radius']))
+                    decisive_center_var.set(str(defaults['visual']['decisive_point_center_radius']))
                     unit_var.set(defaults['data']['augmentation_unit'])
                     train_var.set(str(defaults['data']['split_ratios'][0]))
                     val_var.set(str(defaults['data']['split_ratios'][1]))
@@ -2840,6 +2924,10 @@ MOUSE CONTROLS:
                         scale_var.set(f"{prefs['visual']['scale_factor']:.4f}")
                         degree_var.set(str(prefs['visual']['direction_ratio_max_degree']))
                         angular_var.set(str(prefs['visual']['direction_ratio_max_angular']))
+                        normal_radius_var.set(str(prefs['visual']['normal_point_radius']))
+                        normal_center_var.set(str(prefs['visual']['normal_point_center_radius']))
+                        decisive_radius_var.set(str(prefs['visual']['decisive_point_radius']))
+                        decisive_center_var.set(str(prefs['visual']['decisive_point_center_radius']))
                         unit_var.set(prefs['data']['augmentation_unit'])
                         train_var.set(str(prefs['data']['split_ratios'][0]))
                         val_var.set(str(prefs['data']['split_ratios'][1]))
@@ -2878,9 +2966,9 @@ MOUSE CONTROLS:
         # Bind Enter and Escape keys
         popup.bind('<Escape>', lambda e: cancel_dialog())
         
-        # Set focus to the first tab
+        # Set focus to the Visual tab (which is the first tab at index 0)
         notebook.select(0)
-        unit_combo.focus_set()
+        scale_entry.focus_set()
         
         # Initial preview update
         update_preview()

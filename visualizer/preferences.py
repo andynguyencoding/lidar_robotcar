@@ -28,7 +28,11 @@ class PreferencesManager:
             "visual": {
                 "scale_factor": 0.25,
                 "direction_ratio_max_degree": 45.0,
-                "direction_ratio_max_angular": 1.0
+                "direction_ratio_max_angular": 1.0,
+                "normal_point_radius": 3,
+                "normal_point_center_radius": 1,
+                "decisive_point_radius": 5,
+                "decisive_point_center_radius": 2
             },
             "data": {
                 "augmentation_unit": "m",

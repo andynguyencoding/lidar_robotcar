@@ -80,7 +80,7 @@ class VisualizationRenderer:
             
             # Calculate center and scale based on current canvas size
             center_x = self.current_canvas_size / 2
-            center_y = self.current_canvas_size / 2 - 8  # Move visualization up by ~8 pixels (≈7mm)
+            center_y = self.current_canvas_size / 2 - 37  # Move visualization up by 37 pixels
             
             # Dynamic scale factor based on canvas size - import dynamically to get updated value
             from .config import SCALE_FACTOR
@@ -294,14 +294,18 @@ class VisualizationRenderer:
                 # Draw line and important point - magenta for decisive positions
                 pygame.draw.line(self.screen, (255, 120, 255), (center_x, center_y),
                                (x_coord, y_coord), 2)
-                pygame.draw.circle(self.screen, (255, 80, 80), (x_coord, y_coord), 5)
+                
+                # Get decisive point radii from config
+                from .config import DECISIVE_POINT_RADIUS, DECISIVE_POINT_CENTER_RADIUS
+                pygame.draw.circle(self.screen, (255, 80, 80), (x_coord, y_coord), DECISIVE_POINT_RADIUS)
                 # Add a bright center dot
-                pygame.draw.circle(self.screen, (255, 200, 200), (x_coord, y_coord), 2)
+                pygame.draw.circle(self.screen, (255, 200, 200), (x_coord, y_coord), DECISIVE_POINT_CENTER_RADIUS)
             else:
                 # Regular LiDAR points in bright green with better visibility
-                pygame.draw.circle(self.screen, (100, 255, 100), (x_coord, y_coord), 3)
+                from .config import NORMAL_POINT_RADIUS, NORMAL_POINT_CENTER_RADIUS
+                pygame.draw.circle(self.screen, (100, 255, 100), (x_coord, y_coord), NORMAL_POINT_RADIUS)
                 # Add a darker center for better definition
-                pygame.draw.circle(self.screen, (50, 200, 50), (x_coord, y_coord), 1)
+                pygame.draw.circle(self.screen, (50, 200, 50), (x_coord, y_coord), NORMAL_POINT_CENTER_RADIUS)
     
     def _draw_car(self, center_x, center_y):
         """Draw the car representation"""
