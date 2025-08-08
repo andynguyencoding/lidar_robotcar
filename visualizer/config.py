@@ -41,11 +41,13 @@ AUGMENTATION_UNIT = "m"  # Default unit measurement: "m" or "mm"
 DIRECTION_RATIO_MAX_DEGREE = 45.0  # Maximum degrees for visualization
 DIRECTION_RATIO_MAX_ANGULAR = 1.0  # Angular velocity value that maps to max degree
 
+
 # LiDAR point visualization configuration
 NORMAL_POINT_RADIUS = 3  # Default radius for normal lidar points
 NORMAL_POINT_CENTER_RADIUS = 1  # Default radius for normal point centers
 DECISIVE_POINT_RADIUS = 5  # Default radius for decisive frame points
 DECISIVE_POINT_CENTER_RADIUS = 2  # Default radius for decisive point centers
+CO_CENTRIC_CIRCLE_STEP = 0.2  # Default, will be set from preferences or data
 
 # Export Configuration
 EXPORT_FILE_PREFIX = "lidar_dataset"  # Default prefix for exported files
@@ -78,6 +80,8 @@ def load_preferences_into_config():
         NORMAL_POINT_CENTER_RADIUS = prefs.get("visual", {}).get("normal_point_center_radius", NORMAL_POINT_CENTER_RADIUS)
         DECISIVE_POINT_RADIUS = prefs.get("visual", {}).get("decisive_point_radius", DECISIVE_POINT_RADIUS)
         DECISIVE_POINT_CENTER_RADIUS = prefs.get("visual", {}).get("decisive_point_center_radius", DECISIVE_POINT_CENTER_RADIUS)
+        global CO_CENTRIC_CIRCLE_STEP
+        CO_CENTRIC_CIRCLE_STEP = prefs.get("visual", {}).get("co_centric_circle_step", CO_CENTRIC_CIRCLE_STEP)
         
         # Data preferences
         AUGMENTATION_UNIT = prefs.get("data", {}).get("augmentation_unit", AUGMENTATION_UNIT)
@@ -119,7 +123,8 @@ def save_current_config_to_preferences():
                 "normal_point_radius": NORMAL_POINT_RADIUS,
                 "normal_point_center_radius": NORMAL_POINT_CENTER_RADIUS,
                 "decisive_point_radius": DECISIVE_POINT_RADIUS,
-                "decisive_point_center_radius": DECISIVE_POINT_CENTER_RADIUS
+                "decisive_point_center_radius": DECISIVE_POINT_CENTER_RADIUS,
+                "co_centric_circle_step": CO_CENTRIC_CIRCLE_STEP,
             },
             "data": {
                 "augmentation_unit": AUGMENTATION_UNIT

@@ -17,10 +17,23 @@ class VisualizationRenderer:
         self.screen = None
         self.clock = None
         self.font = None
-        
         # Direction ratio configuration
         self.direction_ratio_max_degree = 45.0
         self.direction_ratio_max_angular = 1.0
+        # Dynamic robot distances for circles and step indicator
+        self.robot_distances = [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0]
+
+    def update_robot_distances(self, data_manager=None):
+        """Recalculate robot_distances based on current config step or data file/environment."""
+        try:
+            from .config import CO_CENTRIC_CIRCLE_STEP
+            step = CO_CENTRIC_CIRCLE_STEP
+            # Always use the user-defined step for co-centric circles
+            min_dist = step
+            max_dist = step * 10
+            self.robot_distances = [round(min_dist * (i + 1), 3) for i in range(10)]
+        except Exception:
+            self.robot_distances = [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0]
     
     def init_pygame(self, canvas):
         """Initialize pygame with proper embedding"""
@@ -74,86 +87,106 @@ class VisualizationRenderer:
             print("ERROR: No pygame screen available for rendering!")
             return
             
+        # Update robot_distances dynamically based on data_manager
+        self.update_robot_distances(data_manager)
+
+        # Fill background with dark theme
+        self.screen.fill((45, 45, 45))  # Dark gray background
+
+        # Calculate center and scale based on current canvas size
+        center_x = self.current_canvas_size / 2
+        center_y = self.current_canvas_size / 2 - 37  # Move visualization up by 37 pixels
+
+        # Dynamic scale factor based on canvas size - import dynamically to get updated value
+        from .config import SCALE_FACTOR
+        dynamic_scale = SCALE_FACTOR * (self.current_canvas_size / 800)  # 800 is the original SCREEN_WIDTH
+
+        # Draw polar coordinate grid
+        self._draw_polar_grid(center_x, center_y, dynamic_scale)
+
+        # Draw distance circles centered on robot
+        self._draw_robot_distance_circles(center_x, center_y, dynamic_scale)
+
+        # Render lidar points
+        self._render_lidar_points(distances, center_x, center_y, dynamic_scale, augmented_mode)
+
+        # Draw car
+        self._draw_car(center_x, center_y)
+
+        # Draw direction lines
+        car_line_length = max(20, int(40 * (self.current_canvas_size / 800)))
+
+        # Forward direction (blue line)
+        if show_forward_dir:
+            self._draw_forward_direction(center_x, center_y, car_line_length)
+
+        # Current velocity (green line)
+        if show_current_vel:
+            self._draw_current_velocity(distances, center_x, center_y, car_line_length, augmented_mode)
+
+        # Previous velocity (red line)
+        if show_prev_vel:
+            self._draw_previous_velocity(prev_angular_velocity, center_x, center_y, car_line_length, augmented_mode)
+
+        # AI prediction (orange line)
+        if show_pred_vel:
+            self._draw_ai_prediction(distances, center_x, center_y, car_line_length, 
+                                   augmented_mode, data_manager, pred_turn_var)
+        else:
+            # Update prediction text even when visualization is disabled
+            self._update_prediction_text_only(distances, augmented_mode, data_manager, pred_turn_var)
+
+        # Draw step indicator for co-centric circles in the bottom right corner
+        self._draw_step_indicator(dynamic_scale)
+
+        # Standard pygame display update
+        pygame.display.flip()
+        pygame.event.pump()
+    def _draw_step_indicator(self, dynamic_scale):
+        """Draw the step indicator for co-centric circles in the bottom right corner"""
         try:
-            # Fill background with dark theme
-            self.screen.fill((45, 45, 45))  # Dark gray background
-            
-            # Calculate center and scale based on current canvas size
-            center_x = self.current_canvas_size / 2
-            center_y = self.current_canvas_size / 2 - 37  # Move visualization up by 37 pixels
-            
-            # Dynamic scale factor based on canvas size - import dynamically to get updated value
-            from .config import SCALE_FACTOR
-            dynamic_scale = SCALE_FACTOR * (self.current_canvas_size / 800)  # 800 is the original SCREEN_WIDTH
-            
-            # Draw polar coordinate grid
-            self._draw_polar_grid(center_x, center_y, dynamic_scale)
-            
-            # Draw distance circles centered on robot
-            self._draw_robot_distance_circles(center_x, center_y, dynamic_scale)
-            
-            # Render lidar points
-            self._render_lidar_points(distances, center_x, center_y, dynamic_scale, augmented_mode)
-            
-            # Draw car
-            self._draw_car(center_x, center_y)
-            
-            # Draw direction lines
-            car_line_length = max(20, int(40 * (self.current_canvas_size / 800)))
-            
-            # Forward direction (blue line)
-            if show_forward_dir:
-                self._draw_forward_direction(center_x, center_y, car_line_length)
-            
-            # Current velocity (green line)
-            if show_current_vel:
-                self._draw_current_velocity(distances, center_x, center_y, car_line_length, augmented_mode)
-            
-            # Previous velocity (red line)
-            if show_prev_vel:
-                self._draw_previous_velocity(prev_angular_velocity, center_x, center_y, car_line_length, augmented_mode)
-            
-            # AI prediction (orange line)
-            if show_pred_vel:
-                self._draw_ai_prediction(distances, center_x, center_y, car_line_length, 
-                                       augmented_mode, data_manager, pred_turn_var)
+            from .config import AUGMENTATION_UNIT, CO_CENTRIC_CIRCLE_STEP
+            step_val_m = CO_CENTRIC_CIRCLE_STEP
+            if AUGMENTATION_UNIT == "mm":
+                step_val = int(step_val_m * 1000)
+                step_text = f"Step: {step_val} mm"
             else:
-                # Update prediction text even when visualization is disabled
-                self._update_prediction_text_only(distances, augmented_mode, data_manager, pred_turn_var)
-            
-            # Standard pygame display update
-            pygame.display.flip()
-            pygame.event.pump()
-                
-        except Exception as e:
-            print(f"Error rendering frame: {e}")
-            import traceback
-            traceback.print_exc()
+                step_text = f"Step: {step_val_m:.3f} m"
+            font_to_use = self.small_font if hasattr(self, 'small_font') and self.small_font else self.font
+            if font_to_use:
+                text_surface = font_to_use.render(step_text, True, (150, 150, 150))  # Gray
+                text_rect = text_surface.get_rect()
+                pad_x, pad_y = 12, 120
+                x = self.current_canvas_size - text_rect.width - pad_x
+                y = self.current_canvas_size - text_rect.height - pad_y
+                self.screen.blit(text_surface, (x, y))
+        except Exception:
+            pass
     
     def _draw_robot_distance_circles(self, center_x, center_y, dynamic_scale):
         """Draw concentric circles centered on robot to show distance ranges"""
         max_radius = min(center_x, center_y) * 0.85  # Match the grid boundary
-        
+
         # Colors for robot-centered distance circles (gray like in reference image)
         robot_circle_color = (120, 120, 120)  # Medium gray for regular circles
         robot_circle_major_color = (140, 140, 140)  # Slightly brighter gray for major circles
         label_color = (160, 160, 160)  # Light gray for labels
-        
-        # Calculate distance intervals based on current data scale
-        # Your data is typically 0.15m to 1.5m range, so we need smaller intervals
-        max_data_distance = 2.0  # meters - reasonable max for indoor LiDAR
-        
-        # Use smaller, more appropriate intervals for the actual data range
-        robot_distances = [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0]
-        major_distances = [0.5, 1.0, 1.5, 2.0]  # Major circles every 0.5m
-        
+
+        # Use dynamic robot_distances
+        major_distances = [0.5, 1.0, 1.5, 2.0]  # Major circles every 0.5m (can be improved to be dynamic too)
+
         # Draw robot-centered distance circles
-        for distance in robot_distances:
-            radius = distance * dynamic_scale * 1000  # Convert to mm scale to match your data
+        from .config import AUGMENTATION_UNIT
+        for distance in self.robot_distances:
+            # If unit is mm, convert to meters for visualization; if m, use as-is
+            if AUGMENTATION_UNIT == "mm":
+                radius = distance * 1000 * dynamic_scale
+            else:
+                radius = distance * dynamic_scale
             if radius <= max_radius and radius > 5:  # Make sure even small circles are visible
                 # Use different styling for major vs minor circles
                 is_major = distance in major_distances
-                
+
                 if is_major:
                     # Major circles - more visible
                     color = robot_circle_major_color
@@ -162,35 +195,35 @@ class VisualizationRenderer:
                     # Minor circles - more subtle
                     color = robot_circle_color
                     line_width = 1
-                
+
                 # Draw the circle
                 pygame.draw.circle(self.screen, color, (int(center_x), int(center_y)), int(radius), line_width)
-                
+
                 # Add distance labels for major circles only, positioned at 45° angle
                 if is_major and hasattr(self, 'small_font') and self.small_font:
                     # Position label at 45 degrees (northeast)
                     label_angle = math.radians(45)
                     label_x = center_x + radius * math.cos(label_angle)
                     label_y = center_y - radius * math.sin(label_angle)
-                    
+
                     # Format distance label
                     label_text = f"{distance:.1f}m"
-                    
+
                     text_surface = self.small_font.render(label_text, True, label_color)
                     text_rect = text_surface.get_rect()
-                    
+
                     # Position the label slightly outside the circle
                     label_x -= text_rect.width // 2
                     label_y -= text_rect.height // 2
-                    
+
                     # Ensure label stays within screen bounds
                     label_x = max(5, min(label_x, self.current_canvas_size - text_rect.width - 5))
                     label_y = max(35, min(label_y, self.current_canvas_size - text_rect.height - 5))
-                    
+
                     # Add a subtle background for better readability
                     background_rect = pygame.Rect(label_x - 2, label_y - 1, text_rect.width + 4, text_rect.height + 2)
                     pygame.draw.rect(self.screen, (20, 20, 20), background_rect)
-                    
+
                     self.screen.blit(text_surface, (label_x, label_y))
 
     def _draw_title(self):

@@ -1962,7 +1962,7 @@ A comprehensive LiDAR data visualization tool with AI integration capabilities."
         popup.geometry(f"700x500+{x}+{y}")
         
         main_frame = ttk.Frame(popup, padding=20)
-        main_frame.pack(fill='both', expand=True)
+        main_frame.pack(fill='both', expand=True, pady=(0, 0))  # Remove extra bottom padding
         
         # Title
         title_label = ttk.Label(main_frame, text="🎮 Controls & Keyboard Shortcuts", 
@@ -2347,7 +2347,7 @@ MOUSE CONTROLS:
         
         # Button frame
         button_frame = ttk.Frame(main_frame)
-        button_frame.pack(pady=(10, 0))
+        button_frame.pack(pady=(0, 0))  # Move buttons up by 10 pixels (remove extra bottom padding)
         
         def apply_direction_ratio():
             """Apply the new direction ratio settings"""
@@ -2421,7 +2421,7 @@ MOUSE CONTROLS:
         
         # Create notebook for tabs
         notebook = ttk.Notebook(main_frame)
-        notebook.pack(fill='both', expand=True, pady=(0, 20))
+        notebook.pack(fill='both', expand=True, pady=(0, 0))  # Remove extra bottom padding
         
         # ============ Visual Tab ============
         visual_frame = ttk.Frame(notebook)
@@ -2528,6 +2528,22 @@ MOUSE CONTROLS:
         
         ttk.Label(point_radius_frame, text="Range: 1-20 pixels", 
                  font=('Arial', 8), foreground='blue').pack(anchor='w', pady=(3, 0))
+
+        # Co-Centric Circle Step Section
+        from .config import CO_CENTRIC_CIRCLE_STEP
+        step_frame = ttk.LabelFrame(visual_main, text="Co-Centric Circle Step", padding=8)
+        step_frame.pack(fill='x', pady=(0, 10))
+
+        ttk.Label(step_frame, text="Step between co-centric circles (meters):", font=('Arial', 10)).pack(anchor='w')
+        ttk.Label(step_frame, text="Controls the spacing between the co-centric circles in the visualization.", font=('Arial', 8), foreground='gray').pack(anchor='w', pady=(0, 5))
+
+        step_var = tk.StringVar(value=str(CO_CENTRIC_CIRCLE_STEP))
+        step_entry = ttk.Entry(step_frame, textvariable=step_var, width=10)
+        step_entry.pack(anchor='w', pady=(5, 5))
+
+        ttk.Label(step_frame, text=f"Current: {CO_CENTRIC_CIRCLE_STEP} m | Recommended: 0.05 - 1.0 m", font=('Arial', 8), foreground='blue').pack(anchor='w')
+
+        # Save logic for co-centric circle step (add to save handler below with other visual settings)
         
         # ============ Data Tab ============
         data_frame = ttk.Frame(notebook)
@@ -2715,7 +2731,7 @@ MOUSE CONTROLS:
         
         # ============ Button Frame ============
         button_frame = ttk.Frame(main_frame)
-        button_frame.pack(pady=(10, 0))
+        button_frame.pack(pady=(3, 0))  # Add small top padding for visual separation
         
         def apply_preferences():
             """Apply all preferences"""
@@ -2724,67 +2740,75 @@ MOUSE CONTROLS:
                 new_scale = float(scale_var.get())
                 new_degree = float(degree_var.get())
                 new_angular = float(angular_var.get())
-                
+
                 # LiDAR point radius settings
                 new_normal_radius = int(normal_radius_var.get())
                 new_normal_center = int(normal_center_var.get())
                 new_decisive_radius = int(decisive_radius_var.get())
                 new_decisive_center = int(decisive_center_var.get())
-                
+
+                # Co-centric circle step
+                new_step = float(step_var.get())
+
                 # Data settings
                 new_unit = unit_var.get()
                 train_ratio = int(train_var.get())
                 val_ratio = int(val_var.get())
                 test_ratio = int(test_var.get())
-                
+
                 # Export settings
                 new_prefix = prefix_var.get().strip()
                 new_timestamp = timestamp_var.get()
-                
+
                 # Validate visual settings
                 if new_scale <= 0 or new_scale >= 9999:
                     messagebox.showerror("Error", "Scale factor must be between 0 and 9999")
                     return
-                
+
                 if new_degree <= 0 or new_degree > 180:
                     messagebox.showerror("Error", "Direction must be between 0 and 180 degrees")
                     return
-                
+
                 if new_angular <= 0:
                     messagebox.showerror("Error", "Angular velocity max must be greater than 0")
                     return
-                
+
                 # Validate radius settings
                 if not (1 <= new_normal_radius <= 20):
                     messagebox.showerror("Error", "Normal point radius must be between 1 and 20 pixels")
                     return
-                
+
                 if not (1 <= new_normal_center <= 20):
                     messagebox.showerror("Error", "Normal point center radius must be between 1 and 20 pixels")
                     return
-                
+
                 if not (1 <= new_decisive_radius <= 20):
                     messagebox.showerror("Error", "Decisive point radius must be between 1 and 20 pixels")
                     return
-                
+
                 if not (1 <= new_decisive_center <= 20):
                     messagebox.showerror("Error", "Decisive point center radius must be between 1 and 20 pixels")
                     return
-                
+
+                # Validate co-centric circle step
+                if not (0.01 <= new_step <= 10.0):
+                    messagebox.showerror("Error", "Co-centric circle step should be between 0.01 and 10.0 meters")
+                    return
+
                 # Validate data settings
                 if train_ratio + val_ratio + test_ratio != 100:
                     messagebox.showerror("Error", "Split ratios must sum to 100%")
                     return
-                
+
                 if train_ratio <= 0 or val_ratio <= 0 or test_ratio <= 0:
                     messagebox.showerror("Error", "All split ratios must be greater than 0")
                     return
-                
+
                 # Validate export settings
                 if not new_prefix:
                     messagebox.showerror("Error", "File prefix cannot be empty")
                     return
-                
+
                 # Validate timestamp format
                 try:
                     from datetime import datetime
@@ -2792,53 +2816,61 @@ MOUSE CONTROLS:
                 except:
                     messagebox.showerror("Error", "Invalid timestamp format")
                     return
-                
+
                 # Apply visual settings
                 import config
                 config.SCALE_FACTOR = new_scale
-                
+
                 # Update local config as well
                 from . import config as local_config
                 local_config.SCALE_FACTOR = new_scale
-                
+
                 # Apply direction ratio
                 self.renderer.set_direction_ratio(new_degree, new_angular)
-                
+
                 # Apply radius settings
                 local_config.NORMAL_POINT_RADIUS = new_normal_radius
                 local_config.NORMAL_POINT_CENTER_RADIUS = new_normal_center
                 local_config.DECISIVE_POINT_RADIUS = new_decisive_radius
                 local_config.DECISIVE_POINT_CENTER_RADIUS = new_decisive_center
-                
-                # Apply data settings
+
+                # Apply co-centric circle step
+                local_config.CO_CENTRIC_CIRCLE_STEP = new_step
+
+                # Data settings
                 config.AUGMENTATION_UNIT = new_unit
                 local_config.AUGMENTATION_UNIT = new_unit
                 self.ui_manager.split_ratios = [train_ratio, val_ratio, test_ratio]
-                
-                # Apply export settings
+
+                # Export settings
                 config.EXPORT_FILE_PREFIX = new_prefix
                 config.EXPORT_TIMESTAMP_FORMAT = new_timestamp
                 local_config.EXPORT_FILE_PREFIX = new_prefix
                 local_config.EXPORT_TIMESTAMP_FORMAT = new_timestamp
-                
-                # Apply session settings
+
+                # Session settings
                 remember_last = remember_var.get()
                 from .preferences import set_last_file_memory_enabled
                 set_last_file_memory_enabled(remember_last)
-                
+
                 # Save preferences to file
                 try:
                     local_config.save_current_config_to_preferences()
                 except Exception as save_error:
                     print(f"Warning: Could not save preferences: {save_error}")
-                
+
                 # Update status to reflect changes
                 self.update_status()
-                
+
+                # Force re-render of visualization to update co-centric circles
+                try:
+                    self.render_frame()
+                except Exception as e:
+                    print(f"Warning: Could not re-render visualization after preferences update: {e}")
                 popup.destroy()
                 messagebox.showinfo("Success", "Preferences updated and saved successfully!")
-                print(f"Preferences updated - Scale: {new_scale:.4f}, Direction: {new_angular}→{new_degree}°, Normal Points: {new_normal_radius}/{new_normal_center}px, Decisive Points: {new_decisive_radius}/{new_decisive_center}px, Unit: {new_unit}, Split: {train_ratio}:{val_ratio}:{test_ratio}%, Prefix: {new_prefix}, Timestamp: {new_timestamp}, Remember Last File: {remember_last}")
-                
+                print(f"Preferences updated - Scale: {new_scale:.4f}, Direction: {new_angular}→{new_degree}°, Normal Points: {new_normal_radius}/{new_normal_center}px, Decisive Points: {new_decisive_radius}/{new_decisive_center}px, Step: {new_step}m, Unit: {new_unit}, Split: {train_ratio}:{val_ratio}:{test_ratio}%, Prefix: {new_prefix}, Timestamp: {new_timestamp}, Remember Last File: {remember_last}")
+
             except ValueError as e:
                 messagebox.showerror("Error", "Please enter valid numeric values")
             except Exception as e:

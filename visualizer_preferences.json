@@ -1,15 +1,16 @@
 {
   "visual": {
-    "scale_factor": 0.3314,
+    "scale_factor": 87.3741,
     "direction_ratio_max_degree": 45.0,
     "direction_ratio_max_angular": 1.0,
-    "normal_point_radius": 2,
+    "normal_point_radius": 1,
     "normal_point_center_radius": 1,
     "decisive_point_radius": 3,
-    "decisive_point_center_radius": 2
+    "decisive_point_center_radius": 2,
+    "co_centric_circle_step": 0.2
   },
   "data": {
-    "augmentation_unit": "m",
+    "augmentation_unit": "mm",
     "split_ratios": [
       70,
       20,
@@ -31,7 +32,7 @@
     "log_to_console": true
   },
   "session": {
-    "last_opened_file": "/home/andy/mysource/github/lidar_robotcar/data/simulation/lidar_training_data_20250727_095526_half2.csv",
+    "last_opened_file": "/home/andy/mysource/github/lidar_robotcar/data/run1/out1.txt",
     "remember_last_file": true
   }
 }

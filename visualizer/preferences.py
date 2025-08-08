@@ -32,7 +32,8 @@ class PreferencesManager:
                 "normal_point_radius": 3,
                 "normal_point_center_radius": 1,
                 "decisive_point_radius": 5,
-                "decisive_point_center_radius": 2
+                "decisive_point_center_radius": 2,
+                "co_centric_circle_step": 0.2  # Default, will be set from data on load
             },
             "data": {
                 "augmentation_unit": "m",
