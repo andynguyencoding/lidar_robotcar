@@ -1479,6 +1479,18 @@ File has Headers: {'Yes' if current_stats.get('has_headers', False) else 'No'}""
                 
                 # Process each data line for imputation
                 for i, data in enumerate(data_lines_from_modified):
+                    # Validate data format
+                    if len(data) < LIDAR_RESOLUTION:
+                        print(f"Warning: Line {i+1} has insufficient data ({len(data)} values, expected {LIDAR_RESOLUTION + 1})")
+                        continue
+                    elif len(data) > LIDAR_RESOLUTION + 1:
+                        print(f"Warning: Line {i+1} has extra data ({len(data)} values, expected {LIDAR_RESOLUTION + 1})")
+                        # Truncate to expected size
+                        data = data[:LIDAR_RESOLUTION + 1]
+                    elif len(data) == LIDAR_RESOLUTION:
+                        # Add default angular velocity if missing
+                        data.append('0.0')
+                    
                     if len(data) == LIDAR_RESOLUTION + 1:  # 360 lidar + 1 turn value
                         lidar_values = []
                         
@@ -1533,8 +1545,20 @@ File has Headers: {'Yes' if current_stats.get('has_headers', False) else 'No'}""
                         # Update the dataframe with imputed values
                         imputed_line = []
                         for j in range(LIDAR_RESOLUTION):
-                            imputed_line.append(str(lidar_values[j]))
-                        imputed_line.append(data[360])  # Keep original angular velocity
+                            # Ensure the value is valid and properly formatted
+                            value = lidar_values[j]
+                            if value is None or math.isnan(value) or math.isinf(value):
+                                value = 500.0  # Default fallback
+                            imputed_line.append(str(round(value, 3)))  # Round to 3 decimal places
+                        
+                        # Keep original angular velocity, ensuring it's valid
+                        angular_vel = data[360] if len(data) > 360 else '0.0'
+                        try:
+                            # Validate angular velocity
+                            float(angular_vel)
+                            imputed_line.append(str(angular_vel))
+                        except (ValueError, TypeError):
+                            imputed_line.append('0.0')  # Default angular velocity
                         
                         # Update the processed data
                         start_idx = 1 if has_headers else 0
@@ -1545,19 +1569,30 @@ File has Headers: {'Yes' if current_stats.get('has_headers', False) else 'No'}""
                 self.stats_imputed = True
                 self.imputed_has_headers = has_headers
                 
-                # Re-analyze the imputed data
-                new_stats = self.analyze_imputed_data_from_list(processed_lines, has_headers)
-                new_stats['imputed_count'] = imputed_count
-                
-                # Update statistics display
-                update_stats_display(new_stats)
+                # Re-analyze the imputed data with error handling
+                try:
+                    new_stats = self.analyze_imputed_data_from_list(processed_lines, has_headers)
+                    new_stats['imputed_count'] = imputed_count
+                    
+                    # Update statistics display
+                    update_stats_display(new_stats)
+                    
+                    # Update histogram if it exists
+                    if hasattr(self, 'stats_canvas') and new_stats.get('angular_velocities'):
+                        self.update_histogram(new_stats)
+                        
+                except Exception as stats_error:
+                    print(f"Warning: Failed to re-analyze imputed data: {stats_error}")
+                    # Create minimal stats for display
+                    new_stats = {
+                        'imputed_count': imputed_count,
+                        'total_frames': len(data_lines_from_modified),
+                        'angular_velocities': []
+                    }
+                    update_stats_display(new_stats)
                 
                 # Enable save button
                 save_button.config(state='normal')
-                
-                # Update histogram if it exists
-                if hasattr(self, 'stats_canvas') and new_stats['angular_velocities']:
-                    self.update_histogram(new_stats)
                 
                 # Determine the source of data for success message
                 data_source = "previously modified data" if (hasattr(self, 'imputed_data') and self.stats_imputed and self.imputed_data) else "original file data"
@@ -1723,23 +1758,41 @@ File has Headers: {'Yes' if current_stats.get('has_headers', False) else 'No'}""
                     title="Save Processed Data",
                     defaultextension=".txt",
                     filetypes=[("Text files", "*.txt"), ("CSV files", "*.csv"), ("All files", "*.*")],
-                    initialname=f"processed_{os.path.basename(data_file)}"
+                    initialfile=f"processed_{os.path.basename(data_file)}"
                 )
                 
                 if save_file:
-                    # Write the data
+                    # Write the data with improved error handling
                     with open(save_file, 'w') as f:
-                        for line in self.imputed_data:
-                            if isinstance(line, list):
-                                f.write(','.join(line) + '\n')
-                            else:
-                                f.write(str(line) + '\n')
+                        for line_idx, line in enumerate(self.imputed_data):
+                            try:
+                                if isinstance(line, list):
+                                    # Ensure all elements are strings and handle any None values
+                                    cleaned_line = []
+                                    for item in line:
+                                        if item is None:
+                                            cleaned_line.append('0.0')  # Replace None with 0.0
+                                        else:
+                                            cleaned_line.append(str(item))
+                                    f.write(','.join(cleaned_line) + '\n')
+                                elif isinstance(line, str):
+                                    f.write(line.strip() + '\n')
+                                else:
+                                    # Convert other types to string
+                                    f.write(str(line).strip() + '\n')
+                            except Exception as line_error:
+                                print(f"Error writing line {line_idx}: {line_error}")
+                                print(f"Problematic line data: {line}")
+                                # Skip this line and continue
+                                continue
                     
                     messagebox.showinfo("Success", f"Data saved successfully to:\n{save_file}")
                     
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to save data: {str(e)}")
                 print(f"Error saving data: {e}")
+                import traceback
+                traceback.print_exc()
         
         save_button = ttk.Button(button_frame, text="Save Data", 
                                 command=save_data, width=12, state='disabled')
